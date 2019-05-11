@@ -601,7 +601,7 @@ class exFATDirentry(Direntry):
         self.type = self._buf[0] & 0x7F
         if self.type == 0 or self.type not in self.slot_types:
             if DEBUG&8: log("Unknown slot type: %Xh", self.type)
-        self._kv = self.slot_types[self.type][0].copy() # select right slot ype
+        self._kv = self.slot_types[self.type][0].copy() # select right slot type
         self._name = self.slot_types[self.type][1]
         self._vk = {} # { name: offset}
         for k, v in list(self._kv.items()):

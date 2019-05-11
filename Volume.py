@@ -1,5 +1,5 @@
 # -*- coding: cp1252 -*-
-import os, time, sys
+import os, time, sys, re
 import disk, utils, FAT, exFAT, partutils, vhdutils
 
 DEBUG = 0
@@ -7,25 +7,57 @@ from debug import log
 
 
 
-def openpart(path, mode='rb', partition=0):
-    "Open a partition returning a partition handle"
+def vopen(path, mode='rb', what='auto'):
+    """Opens a disk, partition or volume according to 'what' parameter: 'auto' 
+    selects the volume in the first partition or disk; 'disk' selects the raw disk;
+    'partitionN' tries to open partition number N; 'volume' tries to open a file
+    system. """
+    if DEBUG&2: log("Volume.open in '%s' mode", what)
+    # Tries to open a raw disk or disk image (plain or VHD)
     if os.name =='nt' and len(path)==2 and path[1] == ':':
         path = '\\\\.\\'+path
     if path.lower().endswith('.vhd'): # VHD image
         d = vhdutils.Image(path, mode)
     else:
-        d = disk.disk(path, mode)
+        d = disk.disk(path, mode) # disk or disk image
+    if DEBUG&2: log("Opened disk: %s", d)
     d.seek(0)
+    if what == 'disk':
+        return d
+    # Tries to access a partition
     mbr = partutils.MBR(d.read(512), disksize=d.size)
-
     if DEBUG&2: log("Opened MBR: %s", mbr)
-
+    valid_mbr = 1
+    n = mbr.partitions[0].size()
     if mbr.wBootSignature != 0xAA55:
-        print("Invalid Master Boot Record. Aborted.")
-        sys.exit(1)
-
+        if DEBUG&2: log("Invalid Master Boot Record")
+        valid_mbr = 0
+    elif mbr.partitions[0].bType != 0xEE and (not n or n > d.size):
+        if DEBUG&2: log("Invalid Primary partition size in MBR")
+        valid_mbr=0
+    elif mbr.partitions[0].bStatus not in (0, 0x80):
+        if DEBUG&2: log("Invalid Primary partition status in MBR")
+        valid_mbr=0
+    if not valid_mbr:
+        if DEBUG&2: log("Invalid Master Boot Record")
+        if what in ('auto', 'volume'):
+            if DEBUG&2: log("Trying to open a File system (Volume) in plain disk")
+            d.seek(0)
+            d.mbr = None
+            v = openvolume(d)
+            if v != 'EINV': return v
+            if DEBUG&2: log("No known file system found, returning RAW disk")
+            d.seek(0)
+            return d
+        else: # partition mode
+            return 'EINVMBR'
+    # Tries to open MBR or GPT partition
+    if DEBUG&2: log("Ok, valid MBR")
+    partition=0
+    if what.startswith('partition'):
+        partition = int(re.match('partition(\d+)', what).group(1))
+    if DEBUG&2: log("Trying to open partition #%d", partition)
     part = None
-
     if mbr.partitions[0].bType == 0xEE: # GPT
         d.seek(512)
         gpt = partutils.GPT(d.read(512), 512)
@@ -39,6 +71,7 @@ def openpart(path, mode='rb', partition=0):
         part.seek(0)
         part.mbr = mbr
         part.gpt = gpt
+        # TODO: protect against invalid partition entries!
     else:
         index=0
         if partition > 0:
@@ -53,11 +86,13 @@ def openpart(path, mode='rb', partition=0):
                 ebr = partutils.MBR(bs, disksize=d.size) # reads Extended Boot Record
                 if DEBUG&2: log("Opened EBR: %s", ebr)
                 if ebr.wBootSignature != 0xAA55:
-                    print("Invalid Extended Boot Record. Aborted.")
-                    sys.exit(1)
+                    if DEBUG&2: log("Invalid Extended Boot Record")
+                    if what == 'auto':
+                        return d
+                    else:
+                        return 'EINV'
                 if DEBUG&2: log("Got partition @%016x (@%016x rel.) %s", ebr.partitions[0].chsoffset(), ebr.partitions[0].lbaoffset(), partutils.raw2chs(ebr.partitions[0].sFirstSectorCHS))
                 if DEBUG&2: log("Next logical partition @%016x (@%016x rel.) %s", ebr.partitions[1].chsoffset(), ebr.partitions[1].lbaoffset(), partutils.raw2chs(ebr.partitions[1].sFirstSectorCHS))
-                #~ print wanted, partition
                 if wanted == partition:
                     if DEBUG&2: log("Opening Logical Partition #%d @%016x %s", partition, ebr.partitions[0].offset(), partutils.raw2chs(ebr.partitions[0].sFirstSectorCHS))
                     part = disk.partition(d, ebr.partitions[0].offset(), ebr.partitions[0].size())
@@ -72,12 +107,18 @@ def openpart(path, mode='rb', partition=0):
         part.mbr = mbr
     def open(x): return openvolume(x)
     disk.partition.open = open # adds an open member to partition object
-    return part
+    if what in ('volume', 'auto'):
+        v = part.open()
+        if DEBUG&2: log("Returning opened Volume %s", v)
+        return v
+    else:
+        if DEBUG&2: log("Returning partition object")
+        return part
 
-
-
+    
 def openvolume(part):
-    "Opens a filesystem given a Python partition object, returning the root directory Dirtable"
+    """Opens a filesystem given a Python disk or partition object, guesses
+    the file system and returns the root directory Dirtable"""
     part.seek(0)
     bs = part.read(512)
     
@@ -91,11 +132,9 @@ def openvolume(part):
     elif fstyp == 'EXFAT':
         boot = exFAT.boot_exfat(bs, stream=part)
     elif fstyp == 'NTFS':
-        print("NTFS file system not supported. Aborted.")
-        sys.exit(1)
+        return 'EINV'
     else:
-        print("File system not recognized. Aborted.")
-        sys.exit(1)
+        return 'EINV'
 
     fat = FAT.FAT(part, boot.fatoffs, boot.clusters(), bitsize={'FAT12':12,'FAT16':16,'FAT32':32,'EXFAT':32}[fstyp], exfat=(fstyp=='EXFAT'))
 
@@ -118,25 +157,6 @@ def openvolume(part):
                 break
 
     return root
-
-
-
-def openimage(path, mode='rb', obj_type='fs'):
-    "Opens a disk or image and returns it as root directory (if obj_type is 'fs') or as raw blocks"
-    if os.name =='nt' and len(path)==2 and path[1] == ':':
-        path = '\\\\.\\'+path
-    if path.lower().endswith('.vhd'): # VHD image
-        d = vhdutils.Image(path, mode)
-    else:
-        d = disk.disk(path, mode)
-    d.seek(0)
-    part = disk.partition(d, 0, d.size)
-    part.seek(0)
-    part.mbr = None
-    if obj_type == 'fs':
-        return openvolume(part)
-    else:
-        return part
 
 
 

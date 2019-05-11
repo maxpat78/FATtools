@@ -224,7 +224,6 @@ class MBR(object):
             part.sLastSectorCHS = chs2raw(sLastSectorCHS)
         #~ if index==0:
             #~ part.bStatus = 0x80
-        # More bType: 01h=FAT12 Primary; 0Bh=FAT32 CHS; 0Ch=FAT32 LBA; 0Eh=FAT16 LBA; 0Fh=Extended LBA
         part.bType = 6 # Primary FAT16 > 32MiB
         if index > 0:
             if (start+size) < 8<<30:
@@ -237,3 +236,68 @@ class MBR(object):
             part.bType = 0xC # FAT32 LBA
         if DEBUG&1: log("setpart: auto set partition type %02X", part.bType)
         self.partitions[index] = part
+
+
+mbr_types = {
+0x01: 'FAT12 Primary',
+0x04: 'FAT16 <32MB',
+0x05: 'Extended CHS',
+0x06: 'FAT16 Primary',
+0x0B: 'FAT32 CHS',
+0x0C: 'FAT32 LBA',
+0x0E: 'FAT16 LBA',
+0x0F: 'Extended LBA',
+0xEE: 'GPT'
+}
+
+
+def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
+    "Makes a single partition with all disk space"
+
+    disk.seek(0)
+    if fmt == 'mbr':
+        if DEBUG&1: log("Making a MBR primary partition, type %X: %s", mbr_type, mbr_types[mbr_type])
+        mbr = MBR(None, disksize=disk.size)
+        mbr.setpart(0, 63*512, disk.size-65536) # creates primary partition
+        mbr.partitions[0].bType = mbr_type
+        disk.write(mbr.pack())
+        disk.close()
+        return mbr
+
+    if DEBUG&1: log("Making a GPT data partition on it\nWriting protective MBR")
+    mbr = MBR(None, disksize=disk.size)
+    mbr.setpart(0, 512, disk.size-512) # create primary partition
+    mbr.partitions[0].bType = 0xEE # Protective GPT MBR
+    mbr.partitions[0].dwTotalSectors = 0xFFFFFFFF
+    disk.write(mbr.pack())
+    if DEBUG&1: log('%s', mbr)
+
+    if DEBUG&1: log("Writing GPT Header and 16K Partition Array")
+    gpt = GPT(None)
+    gpt.sEFISignature = b'EFI PART'
+    gpt.dwRevision = 0x10000
+    gpt.dwHeaderSize = 92
+    gpt.u64MyLBA = 1
+    gpt.u64AlternateLBA = (disk.size-512)//512
+    gpt.u64FirstUsableLBA = 0x22
+    gpt.dwNumberOfPartitionEntries = 0x80
+    gpt.dwSizeOfPartitionEntry = 0x80
+    # Windows stores a backup copy of the GPT array (16 KiB) before Alternate GPT Header
+    gpt.u64LastUsableLBA = gpt.u64AlternateLBA - (gpt.dwNumberOfPartitionEntries*gpt.dwSizeOfPartitionEntry)//512 - 1
+    gpt.u64DiskGUID = uuid.uuid4().bytes_le
+    gpt.u64PartitionEntryLBA = 2
+
+    gpt.parse(ctypes.create_string_buffer(gpt.dwNumberOfPartitionEntries*gpt.dwSizeOfPartitionEntry))
+    gpt.setpart(0, gpt.u64FirstUsableLBA, gpt.u64LastUsableLBA-gpt.u64FirstUsableLBA+1, part_name)
+
+    disk.write(gpt.pack())
+    disk.seek(gpt.u64PartitionEntryLBA*512)
+    disk.write(gpt.raw_partitions)
+
+    disk.seek((gpt.u64LastUsableLBA+1)*512)
+    disk.write(gpt.raw_partitions) # writes backup
+    disk.write(gpt._buf)
+    if DEBUG&1: log('%s', gpt)
+    disk.close()
+    
+    return gpt

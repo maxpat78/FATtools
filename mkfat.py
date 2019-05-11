@@ -126,9 +126,9 @@ def fat12_mkfs(stream, size, sector=512, params={}):
             fsinfo = allowed[2048]
         elif 8<<20 < size <= 16<<20:
             fsinfo = allowed[4096]
-        elif 16<<20 < size <= 32<<20:
+        elif 16<<20 < size <= 31<<20:
             fsinfo = allowed[8192] # 16M-32M
-        elif 32<<20 < size <= 64<<20:
+        elif 31<<20 < size <= 64<<20:
             fsinfo = allowed[16384]
         elif 64<<20 < size <= 128<<20:
             fsinfo = allowed[32768]

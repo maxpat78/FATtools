@@ -2,6 +2,7 @@ FATtools3
 =========
 
 This is a refinement and extension of my FATtools provided in PyDiskTools on GitHub.
+
 Initial Python3 adaptation derives from 221c9fd commit of the Python2 one.
 
 Born to re-sort in an arbitrary order the directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3.7 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
@@ -33,13 +34,37 @@ The most fragile area (and, thus, subject to bugs) was the caching mechanism, th
 
 
 
-Sample usage (see inside 'test' and 'sample' directories for more samples):
+Sample usage (see inside 'test' and 'sample' directories for more samples).
+
+
+At a glance
+
+- to open an existing plain or VHD disk image, or real disk:
+```
+# -*- coding: cp1252 -*-
+from Volume import *
+disk = vopen('MyDiskImage.img', 'r+b', 'disk')
+```
+
+- to make a single GPT partition from all disk space:
+```
+gpt = Volume.partutils.partition(disk)
+```
+
+- to format such partition with the exFAT file system:
+```
+import mkfat
+part = vopen('MyDiskImage.img', 'r+b', 'partition0')
+mkfat.exfat_mkfs(part, (gpt.partitions[0].u64EndingLBA-gpt.partitions[0].u64StartingLBA+1)*512)
+```
+
+- to order root directory table in USB drive X:
 ```
 # -*- coding: cp1252 -*-
 from Volume import *
 
 # Assuming we have DirA, DirB, DirC in this disk order into X:
-root = opendisk('X:', 'r+b')
+root = vopen('X:', 'r+b')
 
 new_order = '''DirB
 DirC

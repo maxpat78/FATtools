@@ -43,7 +43,6 @@ class win32_disk(object):
         # Also it could require Admin rights for non-removable volumes!
         # Suggest: open NON-CACHED
         #  To read or write to the last few sectors of the volume, you must call DeviceIoControl and specify FSCTL_ALLOW_EXTENDED_DASD_IO
-        #~ if windll.kernel32.DeviceIoControl(handle, 0x90020, 0, 0, 0, 0, byref(status), 0):
         if windll.kernel32.DeviceIoControl(handle, DWORD(0x90020), 0, DWORD(0), 0, DWORD(0), byref(status), 0):
             # 5 = ACCESS DENIED 6= INVALID HANDLE
             if GetLastError():
@@ -60,9 +59,13 @@ class win32_disk(object):
         self.handle = handle
         self.name = name
         self.mode = mode
-        #~ self.buf = create_string_buffer(4096)
         if DEBUG&1: log("Successfully opened HANDLE to Win32 Disk %s (size %d MB) for exclusive access", name, self.size//(1<<20))
         self._pos = 0
+
+    def close(self):
+        windll.kernel32.CloseHandle(self.handle)
+        self.closed = True
+        del win32_disk.open_handles[self.name]
         
     def seek(self, offset, whence=0):
         if whence == 1:
@@ -71,9 +74,6 @@ class win32_disk(object):
             npos = self.size + offset
         else:
             npos = offset
-        if self._pos == npos:
-            if DEBUG&1: log("note: call to SetFilePointer superseded, offset is still %Xh", npos)
-            return
         n = c_int(offset>>32)
         if 0xFFFFFFFF == windll.kernel32.SetFilePointer(self.handle, LONG(offset&0xFFFFFFFF), byref(n), DWORD(whence)):
             if GetLastError():
@@ -84,7 +84,7 @@ class win32_disk(object):
         n = c_int(0)
         offset = windll.kernel32.SetFilePointer(self.handle, LONG(0), byref(n), DWORD(1))
         if offset == 0xFFFFFFFF:
-            if windll.kernel32.GetLastError() != 0:
+            if GetLastError() != 0:
                 raise BaseException('SetFilePointer failed with code %d (%s)' % (GetLastError(), FormatError()))
         return (n.value<<32) & offset
 
@@ -147,7 +147,6 @@ class disk(object):
             self.size = self._file.size
         else:
             self._file = open(name, mode, buffering)
-            # bypasses std file.read to let it return a buffer
             self.size = os.stat(name).st_size
         atexit.register(self.cache_flush)
 
@@ -167,9 +166,6 @@ class disk(object):
         if self.pos < 0: self.pos = 0
         self.si = self.pos // self.blocksize
         self.so = self.pos % self.blocksize
-        #~ if self.si == self.lastsi:
-            #~ if DEBUG&1: log("si == lastsi == %Xh, not seeking!", self.si)
-            #~ return
         if DEBUG&1: log("disk pointer to set @%Xh", self.si*self.blocksize)
         self._file.seek(self.si*self.blocksize)
         if DEBUG&1: log("si=%Xh lastsi=%Xh so=%Xh", self.si,self.lastsi,self.so)
@@ -253,12 +249,9 @@ class disk(object):
             self.cache_index = 0
             self.seek(self.pos)
         pos = self.cache_index
-        #~ log("loading disk sector #%d into cache[%d] from offset %Xh", self.si, pos/512, self._file.tell())
         if DEBUG&1: log("loading disk sector #%d into cache[%d]", self.si, pos//512)
         self._file.readinto(self.cache[pos:pos+self.asize])
         self.buf = self.cache[pos:pos+self.asize]
-        #~ if self.si == 50900:
-            #~ log("Loaded sector #50900:\n%s", hexdump.hexdump(self.cache[pos:pos+self.asize],'return'))
         self.cache_index += self.asize
         # Update dictionary of cached sectors and their position
         # Invalidate accordingly if we are recycling pool from zero?
@@ -332,7 +325,6 @@ class disk(object):
             full_blocks = len(s)//512
             if DEBUG&1: log("writing %d sector(s) directly to disk", full_blocks)
             # Directly write full sectors to disk
-            #~ self._file.seek(self.si*self.blocksize)
             # Invalidate eventually cached data
             for si in range(self.si, self.si+full_blocks):
                 if si in self.cache_table:
@@ -368,6 +360,7 @@ class partition(object):
     def __init__(self, disk, offset, size):
         assert size != 0
         self.disk = disk
+        self.closed = False
         self.mode = disk.mode
         self.offset = offset # partition offset
         self.size = size #partition size
@@ -376,6 +369,7 @@ class partition(object):
 
     def close(self):
         self.disk.close()
+        self.closed = True
 
     def seek(self, offset, whence=0):
         if DEBUG&1: log("partion.seek(%016Xh, %d)", offset, whence)
@@ -412,10 +406,10 @@ if __name__ == '__main__':
     from random import randint, shuffle, seed
 
     FAILURES=0
-    seed(1)
+    #~ DEBUG=255
+    #~ seed(1)
     
-    open('TESTIMAGE.BIN', 'wb').write(bytearray(4<<20))
-
+    #~ open('TESTIMAGE.BIN', 'wb').write(bytearray(4<<20))
     #~ d = disk('TESTIMAGE.BIN', 'r+b')
     d = disk('\\\\.\\G:', 'r+b')
     d.rawcache = bytearray(4<<20)
@@ -427,36 +421,49 @@ if __name__ == '__main__':
     d.write(bytearray(16*512))
     sectors = list(range(16))
     shuffle(sectors)
-    values = [randint(0,255) for i in range(16)]
-    offsets = [randint(0,511) for i in range(16)]
+    ok=0
+    while not ok:
+        values = [randint(0,255) for i in range(16)]
+        if len(set(values)) == 16: ok = 1
+    ok=0
+    while not ok:
+        offsets = [randint(0,255) for i in range(16)]
+        if len(set(offsets)) == 16: ok = 1
+    print('sectors', sectors)
+    print('offsets', offsets)
+    print('values', values)
     # Write a random byte at a random position in 16 sectors
     # write them in random order; then read full block
     log("sectors, offsets, values\n%s\n%s\n%s\n", sectors, offsets, values)
     for i in sectors:
-        log("Writing byte %X at sector %d:%d", values[i], i, offsets[i])
+        log("\nWriting byte %X at sector %d:%Xh", values[i], i, offsets[i])
         d.seek(i*512+offsets[i])
-        d.write(values[i].to_bytes(1,'little'))
+        d.write(bytes([values[i]]))
     log("Checking written sectors...")
     d.seek(0)
-    s = bytearray(d.read(16*512))
+    s = d.read(16*512)
     for i in sectors:
-        log("Reading byte %X at sector %d:%d", values[i], i, offsets[i])
+        log("Reading byte %X at sector %d:%Xh", values[i], i, offsets[i])
         if s[i*512+offsets[i]] != values[i]:
             FAILURES+=1
-            print ('FAILURE! Expected byte %d at sector %d:%d, read %s!' % (values[i], i, offsets[i], c))
+            print ('FAILURE! (1) Expected byte %X at sector %d:%d, read %s!' % (values[i], i, offsets[i], c))
             
     # Overwrite area with F8, write full block then read sectors
-    log("Overwriting the same area...")
+    log("\nOverwriting the same area...")
     d.seek(0)
     d.write(16*512*b'\xF8')
     d.seek(0)
     d.write(s)
+    assert len(s) == 16*512
     for i in sectors:
         d.seek(i*512+offsets[i])
         c = d.read(1)
-        if c != values[i].to_bytes(1,'little'):
+        log("Read byte %s at sector %d:%Xh", c, i, offsets[i])
+        if c != bytes([values[i]]):
             FAILURES+=1
-            print ('FAILURE! Expected byte %d in sector %d, read %s!' % (values[i], i, c))
+            print ('FAILURE! (2) Expected byte %X in sector %d, read %s!' % (values[i], i, c))
+            log("ERROR! Expected byte %X", values[i])
+            assert 0
 
     if not FAILURES:
         log("Caching tests passed!")
@@ -466,11 +473,11 @@ if __name__ == '__main__':
     log("Testing sequential writing & reading byte-for-byte of 2 sectors...")
     d.seek(0)
     for i in range(1024):
-        d.write((i&0xFF).to_bytes(1,'little'))
+        d.write(bytes([i&0xFF]))
     d.seek(0)
     for i in range(1024):
         c = d.read(1)
-        if (i&0xFF).to_bytes(1,'little') != c:
+        if bytes([i&0xFF]) != c:
             FAILURES+=1
             print ('FAILURE! Expected byte %d at %d, read %s!' % (i&0xFF, i, c))
 
@@ -505,11 +512,11 @@ if __name__ == '__main__':
     print("Testing sequential writing & reading 2byte-for-2byte of 2 sectors...")
     d.seek(3)
     for i in range(512):
-        d.write(2*(i&0xFF).to_bytes(1,'little'))
+        d.write(2*bytes([i&0xFF]))
     d.seek(3)
     for i in range(512):
         c = d.read(2)
-        if 2*(i&0xFF).to_bytes(1,'little') != c:
+        if 2*bytes([i&0xFF]) != c:
             FAILURES+=1
             print ('FAILURE! Expected bytes %d %d at %d, read %s!' % (i&0xFF, i&0xFF, i, c))
 

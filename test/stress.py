@@ -4,7 +4,6 @@ import sys, os, hashlib, logging, optparse, hexdump
 
 DEBUG=0
 
-from Volume import openpart, openimage
 import Volume
 from debug import log
 
@@ -95,10 +94,7 @@ class RandFile(object):
 
 def stress(opts, args):
     "Randomly populates and erases a tree of random files and directories (for test purposes)"
-    if (args[0][-1] == ':'):
-        root = openimage(args[0], 'r+b')
-    else:
-        root = openpart(args[0], 'r+b').open()
+    root = Volume.vopen(args[0], 'r+b') # auto-opens first useful filesystem
     
     dirs_made, files_created, files_erased = 0,0,0
     
@@ -270,6 +266,8 @@ def stress(opts, args):
                 #~ open('BAD_'+a.replace('\\','_'),'wb').write(s)
         if cb:
             print("WARNING: %d files report wrong SHA-1!" % cb)
+    
+    root.flush()
 
             
 
