@@ -258,7 +258,10 @@ def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
     if fmt == 'mbr':
         if DEBUG&1: log("Making a MBR primary partition, type %X: %s", mbr_type, mbr_types[mbr_type])
         mbr = MBR(None, disksize=disk.size)
-        mbr.setpart(0, 63*512, disk.size-65536) # creates primary partition
+        # Partitions are track-aligned (i.e., 32K-aligned) in old MS-DOS scheme
+        # They are 1 MB-aligned since Windows Vista
+        # Reserve at least 33 sectors at disk end to convert to GPT later?
+        mbr.setpart(0, 63*512, disk.size-32768) # creates primary partition
         mbr.partitions[0].bType = mbr_type
         disk.write(mbr.pack())
         disk.close()
