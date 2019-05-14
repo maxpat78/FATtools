@@ -2,51 +2,9 @@ import utils, struct, disk, os, sys, pprint, optparse
 from FAT import *
 from mkexfat import exfat_mkfs
 
-""" FROM https://support.microsoft.com/en-us/kb/140365
-
-Default cluster sizes for FAT32
-The following table describes the default cluster sizes for FAT32.
-Volume size	    Windows NT 3.51	    Windows NT 4.0	    Windows 2000+
-7 MB-16MB 	    Not supported 	    Not supported	    Not supported
-16 MB-32 MB 	512 bytes	        512 bytes	        Not supported
-32 MB-64 MB 	512 bytes	        512 bytes	        512 bytes
-64 MB-128 MB 	1 KB	            1 KB	            1 KB
-128 MB-256 MB	2 KB	            2 KB	            2 KB
-256 MB-8GB	    4 KB	            4 KB	            4 KB
-8GB-16GB 	    8 KB	            8 KB	            8 KB
-16GB-32GB 	    16 KB	            16 KB	            16 KB
-32GB-2TB 	    32 KB	            Not supported 	    Not supported
-> 2TB	        Not supported 	    Not supported	    Not supported """
-
-"""
-Default cluster sizes for FAT16
-The following table describes the default cluster sizes for FAT16.
-Volume size 	Windows NT 3.51	    Windows NT 4.0	    Windows 2000+
-7 MB-8 MB 	    Not supported 	    Not supported	    Not supported
-8 MB-32 MB 	    512 bytes	        512 bytes	        512 bytes
-32 MB-64 MB 	1 KB             	1 KB 	            1 KB
-64 MB-128 MB 	2 KB             	2 KB            	2 KB
-128 MB-256 MB	4 KB            	4 KB            	4 KB
-256 MB-512 MB	8 KB            	8 KB            	8 KB
-512 MB-1 GB 	16 KB            	16 KB            	16 KB
-1 GB-2 GB 	    32 KB           	32 KB           	32 KB
-2 GB-4 GB 	    64 KB	            64 KB           	64 KB
-4 GB-8 GB 	    Not supported 	    128 KB*         	Not supported
-8 GB-16 GB 	    Not supported 	    256 KB*         	Not supported
-> 16 GB	        Not supported 	    Not supported	    Not supported """
 
 nodos_asm_5Ah = b'\xB8\xC0\x07\x8E\xD8\xBE\x73\x00\xAC\x08\xC0\x74\x09\xB4\x0E\xBB\x07\x00\xCD\x10\xEB\xF2\xF4\xEB\xFD\x4E\x4F\x20\x44\x4F\x53\x00'
 
-"""
-TRACKS     SPT     HEADS    MEDIA
-80         36      2        F0      (3 1/2" DS/HD 2.88 MB)
-80         18      2        F0      (3 1/2" DS/HD 1.44 MB, 2880x512 bytes sectors)
-80          9      2        F9      (3 1/2" DS/DD 720 KB, 2 sectors/cluster)
-80         15      2        F9      (5 25"  1.2 MB)
-40          9      2        FD      (5 25"  360 KB)
-40          8      2        FF      (5 25"  320 KB)
-40          9      1        FC      (5 25"  180 KB)
-40          8      1        FE      (5 25"  160 KB)"""
 
 def fat12_mkfs(stream, size, sector=512, params={}):
     "Make a FAT12 File System on stream. Returns 0 for success."
@@ -120,17 +78,17 @@ def fat12_mkfs(stream, size, sector=512, params={}):
         # MS-inspired selection
         if size <= 2<<20:
             fsinfo = allowed[512] # < 2M
-        elif 2<<20 < size <= 4<<20:
+        elif 2<<20 < size <= 4085<<10:
             fsinfo = allowed[1024]
-        elif 4<<20 < size <= 8<<20:
+        elif 4<<20 < size <= 8170<<10:
             fsinfo = allowed[2048]
-        elif 8<<20 < size <= 16<<20:
+        elif 8<<20 < size <= 16340<<10:
             fsinfo = allowed[4096]
-        elif 16<<20 < size <= 31<<20:
-            fsinfo = allowed[8192] # 16M-32M
-        elif 31<<20 < size <= 64<<20:
+        elif 16<<20 < size <= 32680<<10:
+            fsinfo = allowed[8192]
+        elif 32<<20 < size <= 65360<<10:
             fsinfo = allowed[16384]
-        elif 64<<20 < size <= 128<<20:
+        elif 64<<20 < size <= 130720<<10:
             fsinfo = allowed[32768]
         else:
             fsinfo = allowed[65536]
