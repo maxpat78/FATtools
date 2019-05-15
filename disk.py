@@ -43,14 +43,12 @@ class win32_disk(object):
         # Also it could require Admin rights for non-removable volumes!
         # Suggest: open NON-CACHED
         #  To read or write to the last few sectors of the volume, you must call DeviceIoControl and specify FSCTL_ALLOW_EXTENDED_DASD_IO
-        if windll.kernel32.DeviceIoControl(handle, DWORD(0x90020), 0, DWORD(0), 0, DWORD(0), byref(status), 0):
-            # 5 = ACCESS DENIED 6= INVALID HANDLE
-            if GetLastError():
-                raise BaseException('DeviceIoControl failed with code %d (%s)' % (GetLastError(), FormatError()))
-        if windll.kernel32.DeviceIoControl(handle, DWORD(0x90018), 0, DWORD(0), 0, DWORD(0), byref(status), 0):
-            # 5 = ACCESS DENIED 6= INVALID HANDLE
-            if GetLastError():
-                raise BaseException('DeviceIoControl failed with code %d (%s)' % (GetLastError(), FormatError()))
+        ioctls ={0x90020:'FSCTL_DISMOUNT_VOLUME', 0x90018:'FSCTL_LOCK_VOLUME', 0x90083: 'FSCTL_ALLOW_EXTENDED_DASD_IO'}
+        for ioctl in (0x90020, 0x90018, 0x90083):
+            if windll.kernel32.DeviceIoControl(handle, DWORD(ioctl), 0, DWORD(0), 0, DWORD(0), byref(status), 0):
+                # 5 = ACCESS DENIED 6= INVALID HANDLE
+                if GetLastError():
+                    raise BaseException('DeviceIoControl %s failed with code %d (%s)' % (ioctls[ioctl], GetLastError(), FormatError()))
         GET_LENGTH_INFORMATION = c_ulonglong(0)
         if windll.kernel32.DeviceIoControl(handle,  DWORD(0x7405C), 0, DWORD(0), byref(GET_LENGTH_INFORMATION), DWORD(8), byref(status), 0):
             self.size = GET_LENGTH_INFORMATION.value
@@ -86,7 +84,7 @@ class win32_disk(object):
         if offset == 0xFFFFFFFF:
             if GetLastError() != 0:
                 raise BaseException('SetFilePointer failed with code %d (%s)' % (GetLastError(), FormatError()))
-        return (n.value<<32) & offset
+        return (n.value<<32) | offset
 
     def readinto(self, buf):
         assert len(buf) > 0
@@ -95,6 +93,8 @@ class win32_disk(object):
         z = z.from_buffer(buf)
         if not windll.kernel32.ReadFile(self.handle, z, DWORD(len(buf)), byref(n), 0):
             raise BaseException('ReadFile failed with code %d (%s)' % (GetLastError(), FormatError()))
+        if n.value < len(buf):
+            if DEBUG&1: log("NOTE: ReadFile (readinto) read %d bytes instead of %d", n.value, len(buf))
         self._pos += n.value
 
     def read(self, size=-1):
@@ -103,6 +103,8 @@ class win32_disk(object):
         s = create_string_buffer(size)
         if not windll.kernel32.ReadFile(self.handle, s, DWORD(size), byref(n), 0):
             raise BaseException('ReadFile failed with code %d (%s)' % (GetLastError(), FormatError()))
+        if n.value < size:
+            if DEBUG&1: log("NOTE: ReadFile read %d bytes instead of %d", n.value, size)
         self._pos += n.value
         return bytearray(s)
 
