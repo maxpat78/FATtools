@@ -46,7 +46,7 @@ class win32_disk(object):
         # Suggest: open NON-CACHED
         #  To read or write to the last few sectors of the volume, you must call DeviceIoControl and specify FSCTL_ALLOW_EXTENDED_DASD_IO
         ioctls ={0x90020:'FSCTL_DISMOUNT_VOLUME', 0x90018:'FSCTL_LOCK_VOLUME', 0x90083: 'FSCTL_ALLOW_EXTENDED_DASD_IO'}
-        for ioctl in (0x90020, 0x90018, 0x90083):
+        for ioctl in (0x90020, 0x90018):
             if windll.kernel32.DeviceIoControl(handle, DWORD(ioctl), 0, DWORD(0), 0, DWORD(0), byref(status), 0):
                 # 5 = ACCESS DENIED 6= INVALID HANDLE
                 if GetLastError():
