@@ -1,7 +1,9 @@
 # -*- coding: cp1252 -*-
 import io, os, sys, atexit
 from ctypes import *
-from ctypes.wintypes import *
+
+if os.name == 'nt':
+    from ctypes.wintypes import *
 
 from debug import log
 #~ import hexdump
