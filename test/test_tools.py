@@ -1,4 +1,4 @@
-# -*- coding: cp1252 -*-
+# -*- coding: utf-8 -*-
 
 VHD_MODE = 0
 
@@ -30,7 +30,7 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
         print("Creating a blank %.02f MiB Dynamic VHD disk image" % (fssize/(1<<20)))
         vhdutils.mk_dynamic(img_file, fssize, upto=40<<30, overwrite='yes')
     else:
-        if img_file[-1] != ':':
+        if img_file[-1] != ':' and '\\\\.\\' not in img_file:
             log("Creating a blank %.02f MiB disk image", (fssize/(1<<20)))
             print("Creating a blank %.02f MiB disk image" % (fssize/(1<<20)))
             f = open(img_file,'wb'); f.seek(fssize); f.truncate(); f.close()

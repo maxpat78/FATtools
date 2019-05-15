@@ -260,8 +260,11 @@ def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
         mbr = MBR(None, disksize=disk.size)
         # Partitions are track-aligned (i.e., 32K-aligned) in old MS-DOS scheme
         # They are 1 MB-aligned since Windows Vista
-        # Reserve at least 33 sectors at disk end to convert to GPT later?
-        mbr.setpart(0, 63*512, disk.size-32768) # creates primary partition
+        # We reserve 33 sectors at end, to allow later GPT conversion
+        if mbr_type in (0xC, 0xE):
+            mbr.setpart(0, 1<<20, disk.size - ((1<<20)+33*512))
+        else:
+            mbr.setpart(0, 63*512, disk.size - 97*512)
         mbr.partitions[0].bType = mbr_type
         disk.write(mbr.pack())
         disk.close()
@@ -297,6 +300,7 @@ def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
     disk.seek(gpt.u64PartitionEntryLBA*512)
     disk.write(gpt.raw_partitions)
 
+    if DEBUG&1: log("Writing backup of Partition Array and GPT Header at disk end")
     disk.seek((gpt.u64LastUsableLBA+1)*512)
     disk.write(gpt.raw_partitions) # writes backup
     disk.write(gpt._buf)
