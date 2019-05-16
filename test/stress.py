@@ -282,11 +282,11 @@ if __name__ == '__main__':
     par = optparse.OptionParser(usage=help_s, version="%prog 1.0", description="Stress a FAT/exFAT file system randomly creating, filling and erasing files.")
     par.add_option("-t", "--threshold", dest="threshold", help="limit the stress test to a given percent of the free space. Default: 99%", metavar="PERCENT", default=99, type="float")
     par.add_option("-s", "--filesize", dest="file_size", help="set the maximum size of a random generated file. Default: 1M", metavar="FILESIZE", default=1<<20, type="int")
-    par.add_option("-p", "--programs", dest="programs", help="selects tests to run (bit mask). Default: 63", metavar="PROGRAMS", default=63, type="int")
+    par.add_option("-p", "--programs", dest="programs", help="selects tests to run (bit mask). See inside the script itself. Default: 63", metavar="PROGRAMS", default=63, type="int")
     par.add_option("--debug", dest="debug", help="turn on debug logging to stress.log for specified modules (may be VERY slow!). Default: 0. Use 1 (disk), 2 (Volume), 4 (FAT), 8 (exFAT).", metavar="DEBUG_LOG", default=0, type="int")
     par.add_option("--sha1", action="store_true", dest="sha1", help="turn on generating an hash list of generated files. Default: OFF", metavar="HASH_LOG", default=False)
     par.add_option("--sha1chk", action="store_true", dest="sha1chk", help="turn on checking generated hash list. Default: OFF", metavar="HASH_LOG_CHK", default=False)
-    par.add_option("--fix", action="store_true", dest="fix", help="use a the specified random seed, making the test repeatable. Default: NO", metavar="FIX_RAND", default=0, type="int")
+    par.add_option("--fix", dest="fix", help="use a the specified random seed, making the test repeatable. Default: NO", metavar="FIX_RAND", default=0, type="int")
     par.add_option("--fixdriven", action="store_true", dest="fixdriven", help="use an incremental random seed, starting from, and updating, those stored in file seed.txt. Default: OFF", metavar="FIX_RAND_DRIVEN", default=False)
     opts, args = par.parse_args()
 
@@ -305,13 +305,13 @@ if __name__ == '__main__':
         Volume.disk.DEBUG = opts.debug
 
     if opts.fix:
-        print("Seeding the pseudo-random generator with %d", opts.fix)
+        print("Seeding the pseudo-random generator with %d"%opts.fix)
         if DEBUG&1: log("Seeding the pseudo-random generator with %d", opts.fix)
         seed(opts.fix) # so it repeates the same "random" sequences at every call
 
     if opts.fixdriven:
         n = int(open('seed.txt').read())
-        print("Seeding the pseudo-random generator with %d", n)
+        print("Seeding the pseudo-random generator with %d"%n)
         if DEBUG&1: log("Seeding the pseudo-random generator with %d", n)
         seed(n)
         open('seed.txt','w').write(str(n+1))
