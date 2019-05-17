@@ -72,7 +72,7 @@ class boot_exfat(object):
     __getattr__ = utils.common_getattr
 
     def pack(self):
-        "Update internal buffer"
+        "Updates internal buffer"
         for k, v in list(self._kv.items()):
             self._buf[k:k+struct.calcsize(v[1])] = struct.pack(v[1], getattr(self, v[0]))
         self.__init2__()
@@ -82,12 +82,12 @@ class boot_exfat(object):
         return utils.class2str(self, "exFAT Boot sector @%x\n" % self._pos)
 
     def clusters(self):
-        "Return the number of clusters in the data area"
+        "Returns the number of clusters in the data area"
         # Total sectors minus sectors preceding the data area
         return self.fatsize
 
     def cl2offset(self, cluster):
-        "Return a real's cluster offset"
+        "Returns a real cluster offset"
         return self.dataoffs + (cluster-2)*self.cluster
 
     def root(self):
@@ -107,7 +107,7 @@ class boot_exfat(object):
 
 
 def upcase_expand(s):
-    "Expand a compressed Up-Case table"
+    "Expands a compressed Up-Case table"
     i = 0
     expanded_i = 0
     tab = []
@@ -157,10 +157,10 @@ class Bitmap(Chain):
         self.free_clusters_map = None
         self.free_clusters_flag = 0 # set if map needs compacting
         self.map_free_space()
-        if DEBUG&8: log("exFAT Bitmap of %d bytes (%d clusters) @%Xh", self.filesize, self.filesize*8, self.start)
+        if DEBUG&8: log("exFAT Bitmap of %d bytes (%d clusters) @%Xh", self.filesize, self.boot.dwDataRegionLength, self.start)
 
     def __str__ (self):
-        return "exFAT Bitmap of %d bytes (%d clusters) @%Xh" % (self.filesize, self.filesize*8, self.start)
+        return "exFAT Bitmap of %d bytes (%d clusters) @%Xh" % (self.filesize, self.boot.dwDataRegionLength, self.start)
 
     def map_free_space(self):
         "Maps the free clusters in an ordered dictionary {start_cluster: run_length}"
@@ -168,7 +168,8 @@ class Bitmap(Chain):
         FREE_CLUSTERS=0
         # Bitmap could reach 512M!
         PAGE = 1<<20
-        END_OF_CLUSTERS = self.filesize
+        END_OF_CLUSTERS = (self.boot.dwDataRegionLength+7)//8
+        REMAINDER = 8*END_OF_CLUSTERS - self.boot.dwDataRegionLength
         i = 0 # address of cluster #2
         self.seek(i)
         while i < END_OF_CLUSTERS:
@@ -197,6 +198,13 @@ class Bitmap(Chain):
                 self.free_clusters_map[first_free] =  run_length
                 if DEBUG&8: log("map_free_space: appended run (%d, %d)", first_free, run_length)
             i += len(s) # advance to next Bitmap page to examine
+        if REMAINDER:
+            if DEBUG&8: log("map_free_space: Bitmap rounded by %d bits, correcting total and last run count", REMAINDER)
+            FREE_CLUSTERS -= REMAINDER
+            last = self.free_clusters_map.popitem()
+            run_length = last[1]-REMAINDER # subtracts bits processed in excess
+            if run_length > 0:
+                self.free_clusters_map[last[0]] =  run_length
         self.free_clusters = FREE_CLUSTERS
         if DEBUG&8: log("map_free_space: %d clusters free in %d run(s)", FREE_CLUSTERS, len(self.free_clusters_map))
         return FREE_CLUSTERS, len(self.free_clusters_map)
@@ -255,7 +263,7 @@ class Bitmap(Chain):
             else:
                 B |= ((0xFF>>(8-todo)) << rem)
             self.seek(-1, 1)
-            self.write(B.to_bytes(1,'little'))
+            self.write(struct.pack('B',B))
             length -= todo
             if DEBUG&8: log("set byte 0x%X, remaining=%d", B, length)
         octets = length//8
@@ -276,7 +284,7 @@ class Bitmap(Chain):
             else:
                 B |= (0xFF>>(8-rem))
             self.seek(-1, 1)
-            self.write(B.to_bytes(1,'little'))
+            self.write(struct.pack('B',B))
             if DEBUG&8: log("set B=0x%X", B)
     
     def findfree(self, count=0):
