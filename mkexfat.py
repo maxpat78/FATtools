@@ -21,15 +21,15 @@ def gen_upcase(internal=0):
     for i in range(256):
         C = d_tab[i].upper().encode('utf_16_le')
         if len(bytearray(C)) > 2:
-            C = struct.pack('>H', i)
+            C = struct.pack('<H', i)
         tab += [C]
     for i in range(256, 65536):
         try:
             C = chr(i).upper().encode('utf_16_le')
         except UnicodeEncodeError:
-            C = struct.pack('>H', i)
+            C = struct.pack('<H', i)
         if len(bytearray(C)) > 2:
-            C = struct.pack('>H', i)
+            C = struct.pack('<H', i)
         tab += [C]
     if internal: return tab
     return bytearray().join(tab)
@@ -40,14 +40,14 @@ def gen_upcase_compressed():
     run = -1
     upcase = gen_upcase(1)
     for i in range(65536):
-        u = i.to_bytes(2, 'little')
+        u = struct.pack('<H',i)
         U = upcase[i]
         if u != U:
             rl = i-run
             if run > -1 and rl > 2:
                 # Replace chars with range
                 del tab[len(tab)-rl:]
-                tab += [0xFFFF.to_bytes(2,'little'), rl.to_bytes(2,'little')]
+                tab += [b'\xFF\xFF', struct.pack('<H',rl)]
             run = -1
         else:
             if run < 0: run = i
