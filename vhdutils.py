@@ -172,11 +172,14 @@ class DynamicHeader(object):
 
 class BAT(object):
     "Implements the Block Address Table as indexable object"
-    def __init__ (self, stream, offset, blocks):
+    def __init__ (self, stream, offset, blocks, block_size):
         self.stream = stream
         self.size = blocks # total blocks in the data area
+        self.bsize = block_size # block size
         self.offset = offset # relative BAT offset
         self.decoded = {} # {block index: block effective sector}
+        self.isvalid = 1 # self test result
+        self._isvalid() # performs self test
 
     def __str__ (self):
         return "BAT table of %d blocks starting @%Xh\n" % (self.size, self.offset)
@@ -212,6 +215,51 @@ class BAT(object):
         value = struct.pack(">I", value)
         self.stream.write(value)
         self.stream.seek(opos) # rewinds
+        
+    def _isvalid(self, selftest=1):
+        "Checks BAT for invalid entries setting .isvalid member"
+        self.stream.seek(0, 2)
+        ssize = self.stream.tell() # container actual size
+        if self.offset+4*self.size > ssize:
+            if DEBUG&4: log("%s: container size (%d) is shorter than expected minimum (%d), truncated BAT", self, ssize, self.offset+4*self.size)
+            self.isvalid = -1 # invalid container size
+            return
+        raw_size = self.bsize + max(512, (self.bsize//512)//8) # RAW block size, including bitmap
+        last_block = ssize - 512 - raw_size # theoretical offset of last block
+        first_block = last_block%raw_size # theoretical address of first block
+        allocated = (last_block+raw_size-first_block)//raw_size
+        unallocated = 0
+        seen = []
+        # Windows 10 does NOT check padding BAT slots for FFFFFFFF,
+        # only used indexes have to be valid (DiscUtils VHDDump does!)
+        for i in range(self.size):
+            a = self[i]
+            if a == 0xFFFFFFFF:
+                unallocated+=1
+                continue
+            if a in seen:
+                self.isvalid = -2 # duplicated block address
+                if DEBUG&4: log("%s: BAT[%d] offset (sector %X) was seen more than once", self, i, a)
+                if selftest: break
+                print("ERROR: BAT[%d] offset (sector %X) was seen more than once" %(i, a))
+            if a*512 > last_block or a*512+raw_size > ssize:
+                if DEBUG&4: log("%s: block %d offset (sector %X) exceeds allocated file size", self, i, a)
+                self.isvalid = -3 # block address beyond file's end detected
+                if selftest: break
+                print("ERROR: BAT[%d] offset (sector %X) exceeds allocated file size" %(i, a))
+            if (a*512-first_block)%raw_size:
+                if DEBUG&4: log("%s: BAT[%d] offset (sector %X) is not aligned", self, i, a)
+                self.isvalid = -4 # block address not aligned
+                if selftest: break
+                print("ERROR: BAT[%d] offset (sector %X) is not aligned, overlapping blocks" %(i, a))
+            seen += [a]
+
+        # Neither Windows 10 nor VHDDump detects this case
+        if unallocated + allocated != self.size:
+            if DEBUG&4: log("%s: BAT has %d blocks allocated only, container %d", self, len(seen), allocated)
+            self.isvalid = 0
+            if selftest: return
+            print("WARNING: BAT has %d blocks allocated only, container %d" % (len(seen), allocated))
 
 
 
@@ -326,9 +374,12 @@ class Image(object):
             self.header = DynamicHeader(self.stream.read(1024), 512)
             if not self.header.isvalid():
                 raise BaseException("VHD Image Dynamic Header is not valid!")
-            self.bat = BAT(self.stream, self.header.u64TableOffset, self.header.dwMaxTableEntries)
             self.block = self.header.dwBlockSize
+            self.bat = BAT(self.stream, self.header.u64TableOffset, self.header.dwMaxTableEntries, self.block)
             self.bitmap_size = max(512, (self.block//512)//8) # bitmap sectors size
+            if self.bat.isvalid < 0:
+                error = {-1: "insufficient container size", -2: "duplicated block address", -3: "block past end", -4: "misaligned block"}
+                raise BaseException("VHD Image is not valid: %s", error[self.bat.isvalid])
         if self.footer.dwDiskType == 4: # Differencing VHD
             parent = ''
             loc = None
