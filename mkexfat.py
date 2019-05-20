@@ -57,6 +57,21 @@ def gen_upcase_compressed():
 
 nodos_asm_78h = b'\xB8\xC0\x07\x8E\xD8\xBE\x93\x00\xAC\x08\xC0\x74\x0A\xB4\x0E\xBB\x07\x00\xCD\x10\xE9\xF1\xFF\xF4\xE9\xFC\xFF\x4E\x4F\x20\x44\x4F\x53\x00'
 
+
+def calc_cluster(size):
+    "Returns a cluster adequate to volume size, MS FORMAT style (exFAT)"
+    c = 9 # min cluster: 512 (2^9)
+    v = 26 # min volume: 64 MiB (2^26)
+    for i in range(17):
+        if size <= 2**v: return 2**c
+        c+=1
+        v+=1
+        if v == 29: v+=4
+        if v == 39: v+=1
+    return (2<<25) # Maximum cluster: 32 MiB
+
+
+
 #~ #####
 #~ The layout of an exFAT file system is far more complex than old FAT.
 #
@@ -156,28 +171,7 @@ def exfat_mkfs(stream, size, sector=512, params={}):
             print("Specified cluster size of %d is not allowed for exFAT: aborting..." % params['wanted_cluster'])
             return -1
     else:
-        # MS-inspired selection
-        # Fix it to use cluster size up to 32MB
-        if size < 64<<20:
-            fsinfo = allowed[512] # < 64M
-        elif 64<<20 < size <= 128<<20:
-            fsinfo = allowed[1024]
-        elif 128<<20 < size <= 256<<20:
-            fsinfo = allowed[2048]
-        elif 256<<20 < size <= 8<<30:
-            fsinfo = allowed[4096] # 256M-8G
-        elif 8<<30 < size <= 16<<30:
-            fsinfo = allowed[8192]
-        elif 16<<30 < size <= 32<<30:
-            fsinfo = allowed[16384]
-        elif 32<<30 < size <= 2048<<30:
-            fsinfo = allowed[32768]
-        elif 2048<<30 < size <= 8192<<30:
-            fsinfo = allowed[65536]
-        elif 2048<<30 < size <= 256<<40:
-            fsinfo = allowed[128<<10]
-        else:
-            fsinfo = allowed[256<<10]
+        fsinfo = allowed[calc_cluster(size)]
 
     boot = boot_exfat()
     boot.chJumpInstruction = b'\xEB\x76\x90' # JMP opcode is mandatory, or CHKDSK won't recognize filesystem!
