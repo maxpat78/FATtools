@@ -412,6 +412,9 @@ class Image(object):
         if self.footer.dwDiskType == 2: # Fixed VHD
             self.read = self.read0 # assigns special read and write functions
             self.write = self.write0
+            self.stream.seek(0, 2)
+            if self.stream.tell() - 512 != self.footer.u64CurrentSize:
+                raise BaseException("VHD Fixed Image actual size does not match that stored in Footer!")
         self.size = self.footer.u64CurrentSize
         self.seek(0)
 
@@ -782,3 +785,15 @@ def mk_diff(name, base, overwrite='no'):
 
     f.write(ima.footer.pack()) # stores footer
     f.flush(); f.close()
+
+
+
+if __name__ == '__main__':
+    import os
+    mk_fixed('test.vhd', 64<<20)
+    vhd = Image('test.vhd'); vhd.close()
+    mk_dynamic('test.vhd', 1<<30, upto=40<<30, overwrite='yes')
+    vhd = Image('test.vhd')
+    print('_isvalid returned', vhd.bat.isvalid)
+    vhd.close()
+    os.remove('test.vhd')

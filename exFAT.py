@@ -711,6 +711,11 @@ class exFATDirentry(Direntry):
         "Computate the Stream Extension file name hash (UTF-16 LE encoded)"
         hash = 0
         # 'à' == 'à'.upper() BUT u'à' != u'à'.upper()
+        # NOTE: UpCase table SHOULD be used to determine upper cased chars
+        # valid in a volume. Windows 10 leaves Unicode surrogate pairs untouched,
+        # thus allowing to represent more than 64K chars. Windows 10 Explorer
+        # and PowerShell ISE can display such chars, CMD and PowerShell only
+        # handle them.
         name = name.decode('utf_16_le').upper().encode('utf_16_le') 
         for c in name:
             hash = (((hash<<15) | (hash >> 1)) & 0xFFFF) + c
