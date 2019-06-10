@@ -81,7 +81,7 @@ def chs2raw(t):
 
 def raw2chs(t):
     "Converte i 24 bit della struttura CHS nel MBR in tupla"
-    h,s,c = ord(t[0]),ord(t[1]),ord(t[2])
+    h,s,c = t[0], t[1], t[2]
     return ((s & 192) << 2) | c, h, s & 63
 
 def mkpart(offset, size, hpc=16):
