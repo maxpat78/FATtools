@@ -1,6 +1,6 @@
 # -*- coding: cp1252 -*-
 import os, time, sys, re
-import disk, utils, FAT, exFAT, partutils, vhdutils
+import disk, utils, FAT, exFAT, partutils, vhdutils, vdiutils
 
 DEBUG = 0
 from debug import log
@@ -18,6 +18,8 @@ def vopen(path, mode='rb', what='auto'):
         path = '\\\\.\\'+path
     if path.lower().endswith('.vhd'): # VHD image
         d = vhdutils.Image(path, mode)
+    elif path.lower().endswith('.vdi'): # VDI image
+        d = vdiutils.Image(path, mode)
     else:
         d = disk.disk(path, mode) # disk or disk image
     if DEBUG&2: log("Opened disk: %s", d)
