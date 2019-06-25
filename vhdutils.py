@@ -733,12 +733,15 @@ def mk_diff(name, base, overwrite='no'):
     if os.path.exists(name) and overwrite!='yes':
         raise BaseException("Can't silently overwrite a pre-existing VHD image!")
     ima = Image(base)
-    ima.footer.dwTimestamp = int(time.mktime(time.gmtime()))-946681200
+    parent_uuid = ima.footer.sUniqueId
+    parent_ts = ima.footer.dwTimestamp
     ima.footer.dwDiskType = 4
     ima.footer.dwCreatorApp = b'Py  '
     ima.footer.dwCreatorVer = 0x20007
     ima.footer.dwCreatorHost = b'Wi2k'
-
+    ima.footer.dwTimestamp = int(time.mktime(time.gmtime()))-946681200
+    ima.footer.sUniqueId = uuid.uuid4().bytes
+   
     if DEBUG&4: log("making new Differencing VHD '%s' of %.02f MiB", name, float(ima.size//(1<<20)))
 
     f = myfile(name, 'wb')
@@ -749,8 +752,8 @@ def mk_diff(name, base, overwrite='no'):
     abs_base = os.path.abspath(base).encode('utf_16_le')
     be_base = os.path.abspath(base).encode('utf_16_be')+b'\0\0'
     
-    ima.header.sParentUniqueId = ima.footer.sUniqueId
-    ima.header.dwParentTimeStamp = ima.footer.dwTimestamp
+    ima.header.sParentUniqueId = parent_uuid
+    ima.header.dwParentTimeStamp = parent_ts
     ima.header.sParentUnicodeName = be_base
     
     loc = ima.header.locators

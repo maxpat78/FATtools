@@ -170,7 +170,7 @@ def fat16_mkfs(stream, size, sector=512, params={}):
     if 'reserved_size' in params:
         reserved_size = params['reserved_size']*sector
     else:
-        reserved_size = 8*sector # fixed or variable?
+        reserved_size = sector # MS-DOS 6.22 & 7.1 want this
 
     if 'fat_copies' in params:
         fat_copies = params['fat_copies']

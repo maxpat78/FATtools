@@ -265,7 +265,8 @@ def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
             mbr.setpart(0, 1<<20, disk.size - ((1<<20)+33*512))
         else:
             mbr.setpart(0, 63*512, disk.size - 97*512)
-        mbr.partitions[0].bType = mbr_type
+        if mbr_type in (0xC, 0xE): # else auto determinated
+            mbr.partitions[0].bType = mbr_type
         disk.write(mbr.pack())
         disk.close()
         return mbr
