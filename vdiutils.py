@@ -343,7 +343,6 @@ class Image(object):
                 size=0
             if block==0xFFFFFFFF or block==0xFFFFFFFE:
                 if self.Parent.has_block(self._pos//self.block):
-                    print('Copying', self._pos//self.block)
                     # copies block from parent if it has one allocated
                     self.stream.seek(0, 2)
                     block = (self.stream.tell()-self.header.dwBlocksOffset)//self.block
