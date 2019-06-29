@@ -402,9 +402,10 @@ class Image(object):
                 hparent = hparent[:hparent.find('\0')]
                 raise BaseException("VHD Differencing Image parent '%s' not found!" % hparent)
             self.Parent = Image(parent, "rb")
-            if self.Parent.footer.dwTimestamp != self.header.dwParentTimeStamp:
-                if DEBUG&8: log("TimeStamps: parent=%d self=%d",  self.Parent.footer.dwTimestamp, self.header.dwParentTimeStamp)
-                #~ raise BaseException("Differencing Image timestamp not matched!")
+            parent_ts = int(time.mktime(time.gmtime(os.stat(parent).st_mtime)))-946681200
+            if parent_ts != self.header.dwParentTimeStamp:
+                if DEBUG&8: log("TimeStamps: parent=%d self=%d",  parent_ts, self.header.dwParentTimeStamp)
+                raise BaseException("Differencing Image timestamp not matched: parent was modified after link!")
             if self.Parent.footer.sUniqueId != self.header.sParentUniqueId:
                 raise BaseException("Differencing Image parent's UUID not matched!")
             self.read = self.read1 # assigns special read and write functions
@@ -733,8 +734,9 @@ def mk_diff(name, base, overwrite='no'):
     if os.path.exists(name) and overwrite!='yes':
         raise BaseException("Can't silently overwrite a pre-existing VHD image!")
     ima = Image(base)
+    # Parent's unique references: UUID and last modification time
     parent_uuid = ima.footer.sUniqueId
-    parent_ts = ima.footer.dwTimestamp
+    parent_ts = int(time.mktime(time.gmtime(os.stat(base).st_mtime)))-946681200
     ima.footer.dwDiskType = 4
     ima.footer.dwCreatorApp = b'Py  '
     ima.footer.dwCreatorVer = 0x20007
@@ -796,7 +798,10 @@ if __name__ == '__main__':
     mk_fixed('test.vhd', 64<<20)
     vhd = Image('test.vhd'); vhd.close()
     mk_dynamic('test.vhd', 1<<30, upto=40<<30, overwrite='yes')
-    vhd = Image('test.vhd')
+    vhd = Image('test.vhd'); vhd.close()
     print('_isvalid returned', vhd.bat.isvalid)
-    vhd.close()
+    mk_diff('testd.vhd', 'test.vhd', overwrite='yes')
+    vhd = Image('testd.vhd'); vhd.close()
+    print('_isvalid returned', vhd.bat.isvalid)
+    os.remove('testd.vhd')
     os.remove('test.vhd')
