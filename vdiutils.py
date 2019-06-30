@@ -150,13 +150,52 @@ class BAT(object):
         
     def _isvalid(self, selftest=1):
         "Checks BAT for invalid entries setting .isvalid member"
-        self.isvalid=1
-        return 1
+        self.stream.seek(0, 2)
+        ssize = self.stream.tell() # container actual size
+        if self.offset+4*self.size > ssize:
+            if DEBUG&4: log("%s: container size (%d) is shorter than expected minimum (%d), truncated BAT", self, ssize, self.offset+4*self.size)
+            self.isvalid = -1 # invalid container size
+            return
+        raw_size =  self.bsize # RAW block size, including bitmap
+        last_block = ssize - raw_size # theoretical offset of last block
+        first_block = last_block%raw_size # theoretical address of first block
+        bat_size = max(2<<20, (self.size*4+(1<<20)-1)//(1<<20)*(1<<20))
+        allocated = (ssize-bat_size)//raw_size
+        unallocated = 0
+        seen = []
+        for i in range(self.size):
+            a = self[i]
+            if a == 0xFFFFFFFF or a == 0xFFFFFFFE:
+                unallocated+=1
+                continue
+            if a in seen:
+                self.isvalid = -2 # duplicated block address
+                if DEBUG&4: log("%s: BAT[%d] offset (sector %X) was seen more than once", self, i, a)
+                if selftest: break
+                print("ERROR: BAT[%d] offset (sector %X) was seen more than once" %(i, a))
+            if a*self.bsize > last_block or a*self.bsize+raw_size > ssize:
+                if DEBUG&4: log("%s: block %d offset (sector %X) exceeds allocated file size", self, i, a)
+                self.isvalid = -3 # block address beyond file's end detected
+                if selftest: break
+                print("ERROR: BAT[%d] offset (sector %X) exceeds allocated file size" %(i, a))
+            if (a*self.bsize-first_block)%raw_size:
+                if DEBUG&4: log("%s: BAT[%d] offset (sector %X) is not aligned", self, i, a)
+                self.isvalid = -4 # block address not aligned
+                if selftest: break
+                print("ERROR: BAT[%d] offset (sector %X) is not aligned, overlapping blocks" %(i, a))
+            seen += [a]
+        if unallocated + allocated != self.size:
+            if DEBUG&4: log("%s: BAT has %d blocks allocated only, container %d", self, len(seen), allocated)
+            self.isvalid = 0
+            if selftest: return
+            print("WARNING: BAT has %d blocks allocated only, container %d" % (len(seen), allocated))
+
 
 
 class Image(object):
     def __init__ (self, name, mode='rb'):
         atexit.register(self.close)
+        self.tstamp = os.stat(name).st_mtime # records last mod time stamp
         self._pos = 0 # offset in virtual stream
         self.size = 0 # size of virtual stream
         self.name = name
@@ -230,8 +269,9 @@ class Image(object):
         return self._pos
     
     def close(self):
-        if self.stream.mode != "rb":
-            # Updates header once (dwAllocatedBlocks and sUuidModify)
+        if self.stream.mode != "rb" and self.tstamp != os.stat(self.name).st_mtime:
+            if DEBUG&8: log("%s: VDI container was modified, updating header", self.name)
+            # Updates header once (dwAllocatedBlocks and sUuidModify) if written
             try:
                 f=self.stream
                 f.seek(0, 2)
@@ -374,12 +414,10 @@ def _mk_common(name, size, block, overwrite):
     s='<<< Python3 vdiutils VDI Disk Image >>>\n'
     h.dwBlockSize = block
     h.dwTotalBlocks = size//block
-    #~ h.dwAllocatedBlocks = size//block
     h.sDescriptor = s.encode()+bytearray(64-len(s))
     h.dwSignature = 0xBEDA107F
     h.dwVersion = 0x10001
     h.dwHeaderSize = 0x200
-    #~ h.dwImageType = 2
     h.dwBATOffset = (1<<20)
     h.dwBlocksOffset = max(2<<20, (h.dwTotalBlocks*4+(1<<20)-1)//(1<<20)*(1<<20))
     h.u64CurrentSize = size
@@ -471,6 +509,7 @@ if __name__ == '__main__':
     vdi = Image('test.vdi'); vdi.close()
     mk_dynamic('test.vdi', 1<<30, overwrite='yes')
     vdi = Image('test.vdi')
+    vdi.bat._isvalid(selftest=0)
     print('_isvalid returned', vdi.bat.isvalid)
     vdi.close()
     os.remove('test.vdi')

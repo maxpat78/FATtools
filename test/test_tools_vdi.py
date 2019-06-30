@@ -40,8 +40,12 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
         print('Invalid disk or image file specified to test!')
         sys.exit(1)
 
-    print("Creating a GPT partition on disk")
-    gpt = partutils.partition(f)
+    if len(sys.argv)>2 and sys.argv[2]=='mbr':
+        print("Creating a MBR partition on disk")
+        gpt = partutils.partition(f, 'mbr', mbr_type=6)
+    else:
+        print("Creating a GPT partition on disk")
+        gpt = partutils.partition(f)
     
     print("Applying FAT File System on partition:", fat_type)
     log("Applying FAT File System on partition: %s", fat_type)
@@ -56,7 +60,10 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
         fmt = mkfat.fat16_mkfs
     elif fat_type == 'fat12':
         fmt = mkfat.fat12_mkfs
-    fmt(f, (gpt.partitions[0].u64EndingLBA-gpt.partitions[0].u64StartingLBA+1)*512)
+    if len(sys.argv)>2 and sys.argv[2]=='mbr':
+        fmt(f, f.size)
+    else:
+        fmt(f, (gpt.partitions[0].u64EndingLBA-gpt.partitions[0].u64StartingLBA+1)*512)
     f.close()
 
     #~ root = openpart(DISK, 'r+b').open()
@@ -123,3 +130,4 @@ if __name__ == '__main__':
     fmts = ['fat12', 'fat16', 'fat32', 'exfat']
     for fmt in fmts:
         test(sys.argv[1], fat_type=fmt)
+    
