@@ -231,8 +231,6 @@ class Image(object):
                 raise BaseException("VDI images not linked, sUuidLinkage!=sUuidCreate")
             if self.Parent.header.sUuidModify != self.header.sUuidParentModify:
                 raise BaseException("VDI Image parent's was altered after snapshot!")
-            self.read = self.read1 # assigns special read and write functions
-            self.write = self.write1
         self.size = self.header.u64CurrentSize
         self.seek(0)
 
@@ -285,32 +283,7 @@ class Image(object):
         self.stream.close()
         
     def read(self, size=-1):
-        "Reads (Dynamic, non-Differencing image)"
-        if size == -1 or self._pos + size > self.size:
-            size = self.size - self._pos # reads all
-        buf = bytearray()
-        while size:
-            block = self.bat[self._pos//self.block]
-            offset = self._pos%self.block
-            leftbytes = self.block-offset
-            if DEBUG&4: log("%s: reading at block %d, offset 0x%X (vpos=0x%X, epos=0x%X)", self.name, self._pos//self.block, offset, self._pos, self.stream.tell())
-            if leftbytes <= size:
-                got=leftbytes
-                size-=leftbytes
-            else:
-                got=size
-                size=0
-            self._pos += got
-            if block == 0xFFFFFFFF or block == 0xFFFFFFFE:
-                if DEBUG&4: log("block content is virtual (zeroed)")
-                buf+=bytearray(got)
-                continue
-            self.stream.seek(self.header.dwBlocksOffset+block*self.block+self.header.dwBlockExtraSize+offset)
-            buf += self.stream.read(got)
-        return buf
-
-    def read1(self, size=-1):
-        "Reads (Differencing image)"
+        "Reads (Normal, Differencing image)"
         if size == -1 or self._pos + size > self.size:
             size = self.size - self._pos # reads all
         buf = bytearray()
@@ -327,46 +300,21 @@ class Image(object):
                 size=0
             self._pos += got
             if block==0xFFFFFFFF or block==0xFFFFFFFE:
-                if DEBUG&4: log("reading %d bytes from parent", got)
-                self.Parent.seek(self._pos-got)
-                buf += self.Parent.read(got)
+                if self.Parent:
+                    if DEBUG&4: log("%s: reading %d bytes from parent", self.name, got)
+                    self.Parent.seek(self._pos-got)
+                    buf += self.Parent.read(got)
+                else:
+                    if DEBUG&4: log("%s: block content is virtual (zeroed)", self.name)
+                    buf+=bytearray(got)
+                continue
             else:
                 self.stream.seek(self.header.dwBlocksOffset+block*self.block+self.header.dwBlockExtraSize+offset)
                 buf += self.stream.read(got)
         return buf
 
     def write(self, s):
-        "Writes (Dynamic, non-Differencing image)"
-        if DEBUG&8: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
-        size = len(s)
-        if not size: return
-        i=0
-        while size:
-            block = self.bat[self._pos//self.block]
-            offset = self._pos%self.block
-            leftbytes = self.block-offset
-            if leftbytes <= size:
-                put=leftbytes
-                size-=leftbytes
-            else:
-                put=size
-                size=0
-            if block == 0xFFFFFFFF or block == 0xFFFFFFFE:
-                # allocates a new block at end before writing
-                self.stream.seek(0, 2)
-                block = (self.stream.tell()-self.header.dwBlocksOffset)//self.block
-                self.bat[self._pos//self.block] = block
-                self.stream.seek(self.block-1, 1)
-                self.stream.write(b'\x00') # force effective block allocation
-                if DEBUG&4: log("allocating new block #%d @0x%X", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
-            self.stream.seek(self.header.dwBlocksOffset+block*self.block+self.header.dwBlockExtraSize+offset)
-            if DEBUG&4: log("writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self._pos//self.block, offset, self._pos, i, i+put)
-            self.stream.write(s[i:i+put])
-            i+=put
-            self._pos+=put
-
-    def write1(self, s):
-        "Writes (Differencing image)"
+        "Writes (Normal, Differencing image)"
         if DEBUG&8: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
         size = len(s)
         if not size: return
@@ -382,7 +330,7 @@ class Image(object):
                 put=size
                 size=0
             if block==0xFFFFFFFF or block==0xFFFFFFFE:
-                if self.Parent.has_block(self._pos//self.block):
+                if self.Parent and self.Parent.has_block(self._pos//self.block):
                     # copies block from parent if it has one allocated
                     self.stream.seek(0, 2)
                     block = (self.stream.tell()-self.header.dwBlocksOffset)//self.block
@@ -399,7 +347,7 @@ class Image(object):
                     self.stream.write(b'\x00') # force effective block allocation
                     if DEBUG&4: log("allocating new block #%d @0x%X", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
             self.stream.seek(self.header.dwBlocksOffset+block*self.block+self.header.dwBlockExtraSize+offset)
-            if DEBUG&4: log("writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self._pos//self.block, offset, self._pos, i, i+put)
+            if DEBUG&4: log("%s: writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self.name, self._pos//self.block, offset, self._pos, i, i+put)
             self.stream.write(s[i:i+put])
             i+=put
             self._pos+=put
