@@ -23,10 +23,13 @@ of a parent VHD image (fixed, dynamic or differencing itself). The block
 bitmap must be checked to determine which sectors are in use.
 
 Since offsets are represented in sectors, the BAT can address sectors in a range
-from zero to 2^32-1 or about 2 TiB.
+up to 2^32-1 or about 2 TiB.
 The disk image itself is shorter due to VHD internal structures (assuming 2^20
-blocks of default size, 4 MiB are occupied by the BAT and 512 MiB by bitmap
-sectors.
+blocks of default size, the very first sectors are occupied by heaeders, 4 MiB
+by the BAT and 512 MiB by bitmap sectors.
+
+A BAT index of 0xFFFFFFFF signals a zeroed block not allocated physically:
+such value is kept until a block is written with all zeros, too. 
 
 PLEASE NOTE THAT ALL NUMBERS ARE IN BIG ENDIAN FORMAT! """
 import io, utils, struct, uuid, zlib, ctypes, time, os, math
@@ -417,6 +420,7 @@ class Image(object):
             if self.stream.tell() - 512 != self.footer.u64CurrentSize:
                 raise BaseException("VHD Fixed Image actual size does not match that stored in Footer!")
         self.size = self.footer.u64CurrentSize
+        self.zero = bytearray(self.block)
         self.seek(0)
 
     def cache_flush(self):
@@ -540,6 +544,12 @@ class Image(object):
                 put=size
                 size=0
             if block == 0xFFFFFFFF:
+                # we keep a block virtualized until we write zeros
+                if s[i:i+put] == self.zero[:put]:
+                    i+=put
+                    self._pos+=put
+                    if DEBUG&4: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                    continue
                 # allocates a new block at end before writing
                 self.stream.seek(-512, 2) # overwrites old footer
                 block = self.stream.tell()//512
@@ -572,6 +582,12 @@ class Image(object):
                 put=size
                 size=0
             if block == 0xFFFFFFFF:
+                # we keep a block virtualized until we write zeros
+                if s[i:i+put] == self.zero[:put]:
+                    i+=put
+                    self._pos+=put
+                    if DEBUG&4: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                    continue
                 # allocates a new block at end before writing
                 self.stream.seek(-512, 2) # overwrites old footer
                 block = self.stream.tell()//512

@@ -22,8 +22,9 @@ a power of 2 and at least 4K).
 There are 2 copies of GD with a GT each.
 All these structures (metadata) are initialized when the extent is created, so
 the GD is not really needed to access a GT: an array of GTs follows a GD.
-GTEs are set to zero since no Grain is allocated initially (reading returns
-a zeroed grain or the parent's grain if any).
+A GTE set to 0 signals an unallocated Grain (reading returns zeros or the
+parent's grain contents if any). A GTE set to 1 means the Grain is allocated
+but still zeroed.
 Grains are allocated on write and appear in any order (SPARSE extent) or are
 allocated at extent creation (FLAT).
 A virtual disk can be contained in a single monolithic file or span multiple
@@ -183,7 +184,7 @@ class BAT(object):
         self.stream.seek(pos)
         slot = struct.unpack("<I", self.stream.read(4))[0]
         self.decoded[index] = slot
-        if DEBUG&4: log("%s: got GT[0x%X]=0x%X @0x%X", self.stream.name, index, slot, pos)
+        if DEBUG&8: log("%s: got GT[0x%X]=0x%X @0x%X", self.stream.name, index, slot, pos)
         self.stream.seek(opos) # rewinds
         return slot
 
@@ -201,10 +202,10 @@ class BAT(object):
         self.stream.seek(pos)
         value = struct.pack("<I", value)
         self.stream.write(value)
-        if DEBUG&4: log("%s: set GT1[0x%X]=0x%s @0x%X", self.stream.name, index, value, pos)
+        if DEBUG&8: log("%s: set GT1[0x%X]=0x%s @0x%X", self.stream.name, index, value, pos)
         # Sets copy #2
         pos = self.offset2+dsp
-        if DEBUG&4: log("%s: set GT2[0x%X]=0x%s @0x%X", self.stream.name, index, value, pos)
+        if DEBUG&8: log("%s: set GT2[0x%X]=0x%s @0x%X", self.stream.name, index, value, pos)
         self.stream.seek(pos)
         self.stream.write(value)
         self.stream.seek(opos) # rewinds
@@ -272,6 +273,7 @@ class Extent(object):
         if not self.header.isvalid():
             raise BaseException("VMDK Header is not valid in Extent '%s'!"%name)
         self.block = self.header.u64GrainSize*512
+        self.zero = bytearray(self.block)
         h=self.header
         blocks = h.u64Capacity//h.u64GrainSize
         # Grain Tables in this extent
@@ -366,8 +368,8 @@ class Extent(object):
             else:
                 put=size
                 size=0
-            if not block:
-                if self.Parent and self.Parent.has_block(self._pos//self.block):
+            if block==0 or block==1:
+                if not block and self.Parent and self.Parent.has_block(self._pos//self.block):
                     # copies block from parent if it has one allocated
                     self.stream.seek(0, 2)
                     block = self.stream.tell()//512
@@ -376,13 +378,22 @@ class Extent(object):
                     self.stream.write(self.Parent.read(self.block))
                     if DEBUG&4: log("copied old block #%d @0x%X", self._pos//self.block, block*self.block)
                 else:
-                    # allocates a new grain at end before writing
-                    self.stream.seek(0, 2)
-                    block = self.stream.tell()//512
-                    self.bat[self._pos//self.block] = block
-                    if DEBUG&4: log("allocating new Grain #%d @0x%X", self._pos//self.block, block*512)
-                    self.stream.seek(self.block-1, 1)
-                    self.stream.write(b'\x00')
+                    # we keep a block virtualized until we write zeros
+                    if s[i:i+put] == self.zero[:put]:
+                        if not block:
+                            self.bat[self._pos//self.block] = 1
+                        i+=put
+                        self._pos+=put
+                        if DEBUG&4: log("Grain #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, block*self.block)
+                        continue
+                    else:
+                        # allocates a new grain at end before writing
+                        self.stream.seek(0, 2)
+                        block = self.stream.tell()//512
+                        self.bat[self._pos//self.block] = block
+                        if DEBUG&4: log("allocating new Grain #%d @0x%X", self._pos//self.block, block*512)
+                        self.stream.seek(self.block-1, 1)
+                        self.stream.write(b'\x00')
             self.stream.seek(block*512+offset)
             if DEBUG&4: log("%s: writing grain #%d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self.name, self._pos//self.block, offset, self._pos, i, i+put)
             self.stream.write(s[i:i+put])
@@ -435,6 +446,7 @@ class Image(object):
             ext['stream'].flush()
 
     def close(self):
+        if self.closed: return
         changed=0
         for ext in self.ddf['extents']:
             e = ext['stream']
@@ -445,7 +457,7 @@ class Image(object):
                     if ext['stream'].tstamp != os.stat(e.name).st_mtime:
                         changed=1
         if changed and e.stream.mode != "rb" and not self.closed:
-            if DEBUG&8: log("%s_%x: timestamp changed, updating Image's CID", self.name, self.__hash__())
+            if DEBUG: log("%s_%x: timestamp changed, updating Image's CID", self.name, self.__hash__())
             i = self.ddf['raw'].index('CID=')
             s = self.ddf['raw']
             s = s.replace(s[i:i+12], 'CID=%x'%random.randint(1, 0xfffffffd))

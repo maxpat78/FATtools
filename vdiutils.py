@@ -17,7 +17,7 @@ Initially all BAT indexes are present and set to 0xFFFFFFFF, signaling an
 unallocated block: reading it may return arbitrary contents.
 Blocks are allocated on write and put at image's end, so they appear in
 arbitrary order.
-A value of 0xFFFFFFFE means a freed (zeroed) block.
+A value of 0xFFFFFFFE means a virtually allocated and zeroed block.
 
 A Differencing VDI is a Dynamic VDI linked with its parent by the sUuidLinkage
 and sUuidParentModify members: checking the latter ensures the base image was
@@ -210,6 +210,7 @@ class Image(object):
         if not self.header.isvalid():
             raise BaseException("VDI Image Dynamic Header is not valid!")
         self.block = self.header.dwBlockSize
+        self.zero = bytearray(self.block)
         self.bat = BAT(self.stream, self.header.dwBATOffset, self.header.dwTotalBlocks, self.block)
         if self.bat.isvalid < 0:
             error = {-1: "insufficient container size", -2: "duplicated block address", -3: "block past end", -4: "misaligned block"}
@@ -330,7 +331,7 @@ class Image(object):
                 put=size
                 size=0
             if block==0xFFFFFFFF or block==0xFFFFFFFE:
-                if self.Parent and self.Parent.has_block(self._pos//self.block):
+                if block==0xFFFFFFFF and self.Parent and self.Parent.has_block(self._pos//self.block):
                     # copies block from parent if it has one allocated
                     self.stream.seek(0, 2)
                     block = (self.stream.tell()-self.header.dwBlocksOffset)//self.block
@@ -339,15 +340,24 @@ class Image(object):
                     self.stream.write(self.Parent.read(self.block))
                     if DEBUG&4: log("copied old block #%d @0x%X", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
                 else:
-                    # allocates a new block at end before writing
-                    self.stream.seek(0, 2)
-                    block = (self.stream.tell()-self.header.dwBlocksOffset)//self.block
-                    self.bat[self._pos//self.block] = block
-                    self.stream.seek(self.block-1, 1)
-                    self.stream.write(b'\x00') # force effective block allocation
-                    if DEBUG&4: log("allocating new block #%d @0x%X", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                    # we keep a block virtualized until we write zeros
+                    if s[i:i+put] == self.zero[:put]:
+                        if block==0xFFFFFFFF:
+                            self.bat[self._pos//self.block] = 0xFFFFFFFE
+                        i+=put
+                        self._pos+=put
+                        if DEBUG&4: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                        continue
+                    else:
+                        # allocates a new block at end before writing
+                        self.stream.seek(0, 2)
+                        block = (self.stream.tell()-self.header.dwBlocksOffset)//self.block
+                        self.bat[self._pos//self.block] = block
+                        self.stream.seek(self.block-1, 1)
+                        self.stream.write(b'\x00') # force effective block allocation
+                        if DEBUG&4: log("allocating new block #%d @0x%X", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
             self.stream.seek(self.header.dwBlocksOffset+block*self.block+self.header.dwBlockExtraSize+offset)
-            if DEBUG&4: log("%s: writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self.name, self._pos//self.block, offset, self._pos, i, i+put)
+            if DEBUG&4: log("writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self._pos//self.block, offset, self._pos, i, i+put)
             self.stream.write(s[i:i+put])
             i+=put
             self._pos+=put
@@ -456,8 +466,9 @@ if __name__ == '__main__':
     mk_fixed('test.vdi', 64<<20, overwrite='yes')
     vdi = Image('test.vdi'); vdi.close()
     mk_dynamic('test.vdi', 1<<30, overwrite='yes')
-    vdi = Image('test.vdi')
+    vdi = Image('test.vdi', 'r+b')
     vdi.bat._isvalid(selftest=0)
+    vdi.write(bytearray(4<<20))
     print('_isvalid returned', vdi.bat.isvalid)
     vdi.close()
     os.remove('test.vdi')

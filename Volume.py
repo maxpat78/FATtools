@@ -1,8 +1,9 @@
 # -*- coding: cp1252 -*-
 import os, time, sys, re
-import disk, utils, FAT, exFAT, partutils, vhdutils, vdiutils
+import disk, utils, FAT, exFAT, partutils
+import vhdutils, vdiutils, vmdkutils
 
-DEBUG = 0
+DEBUG = 2
 from debug import log
 
 
@@ -13,16 +14,24 @@ def vopen(path, mode='rb', what='auto'):
     'partitionN' tries to open partition number N; 'volume' tries to open a file
     system. """
     if DEBUG&2: log("Volume.open in '%s' mode", what)
-    # Tries to open a raw disk or disk image (plain or VHD)
-    if os.name =='nt' and len(path)==2 and path[1] == ':':
-        path = '\\\\.\\'+path
-    if path.lower().endswith('.vhd'): # VHD image
-        d = vhdutils.Image(path, mode)
-    elif path.lower().endswith('.vdi'): # VDI image
-        d = vdiutils.Image(path, mode)
+    if type(path) in (disk.disk, vhdutils.Image, vdiutils.Image, vmdkutils.Image):
+        if path.mode == mode:
+            d = path
+        else:
+            d = type(path)(path.name, mode) # reopens with right mode
     else:
-        d = disk.disk(path, mode) # disk or disk image
-    if DEBUG&2: log("Opened disk: %s", d)
+        # Tries to open a raw disk or disk image (plain or VHD)
+        if os.name =='nt' and len(path)==2 and path[1] == ':':
+            path = '\\\\.\\'+path
+        if path.lower().endswith('.vhd'): # VHD image
+            d = vhdutils.Image(path, mode)
+        elif path.lower().endswith('.vdi'): # VDI image
+            d = vdiutils.Image(path, mode)
+        elif path.lower().endswith('.vmdk'): # VMDK image
+            d = vmdkutils.Image(path, mode)
+        else:
+            d = disk.disk(path, mode) # disk or disk image
+        if DEBUG&2: log("Opened disk: %s", d)
     d.seek(0)
     if what == 'disk':
         return d
