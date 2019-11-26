@@ -32,6 +32,7 @@ The most fragile area (and, thus, subject to bugs) was the caching mechanism, th
 
 *Actually, the I/O speed is closer to system's one.*
 
+Code is GPLed (look at GPL.TXT inside folder).
 
 
 Sample usage (see inside 'test' and 'sample' directories for more samples).
