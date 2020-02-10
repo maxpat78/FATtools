@@ -4,7 +4,7 @@
 
 DEBUG=0
 
-import sys, copy, os, struct, time, io, atexit
+import sys, copy, os, struct, time, io, atexit, functools
 from datetime import datetime
 from collections import OrderedDict
 from zlib import crc32
@@ -1802,7 +1802,12 @@ class Dirtable(object):
         elif b not in Dirtable._sortby.fix:
             return 1
         else:
-            return cmp(Dirtable._sortby.fix.index(a), Dirtable._sortby.fix.index(b))
+            if Dirtable._sortby.fix.index(a) < Dirtable._sortby.fix.index(b):
+                return -1
+            elif Dirtable._sortby.fix.index(a) > Dirtable._sortby.fix.index(b):
+                return 1
+            else:
+                return 0
 
     def clean(self, shrink=False):
         "Compacts used slots and blanks unused ones, optionally shrinking the table"
@@ -1831,9 +1836,8 @@ class Dirtable(object):
             if n in ('.', '..'): continue
             d[n] = e
             names+=[n]
-        #~ names.sort(key=by_func)
         if by_func:
-            names.sort(by_func)
+            names.sort(key=functools.cmp_to_key(by_func))
         if self.path == '.':
             self.stream.seek(0)
         else:
