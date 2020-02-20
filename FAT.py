@@ -1132,12 +1132,13 @@ class FATDirentry(Direntry):
         if not self.IsLfn():
             return ''
         i = len(self._buf)-64
-        ln = ''
+        ln = b''
         while i >= 0:
-            ln += self._buf[i+1:i+1+10].decode('utf-16le') + \
-            self._buf[i+14:i+14+12].decode('utf-16le') + \
-            self._buf[i+28:i+28+4].decode('utf-16le')
+            ln += self._buf[i+1:i+1+10] + \
+            self._buf[i+14:i+14+12] + \
+            self._buf[i+28:i+28+4]
             i -= 32
+        ln = ln.decode('utf-16le')
         i = ln.find('\x00') # ending NULL may be omitted!
         if i < 0:
             return ln
@@ -1205,7 +1206,8 @@ class FATDirentry(Direntry):
         "Makes a human readable short name from slot's one"
         if DEBUG&4: log("GetShortName got %s:%d",shortname,chFlags)
         if type(shortname) != str:
-            shortname = shortname.decode()
+            #~ shortname = shortname.decode()
+            shortname = shortname.decode('ansi') # fix b'XXXXXX~1\xfaTH'
         name = shortname[:8].rstrip()
         if chFlags & 0x8: name = name.lower()
         ext = shortname[8:].rstrip()
