@@ -1,10 +1,10 @@
 # -*- coding: cp1252 -*-
 import os, time, sys, re
-import disk, utils, FAT, exFAT, partutils
-import vhdutils, vdiutils, vmdkutils
+from FATtools import disk, utils, FAT, exFAT, partutils
+from FATtools import vhdutils, vdiutils, vmdkutils
 
 DEBUG = 2
-from debug import log
+from FATtools.debug import log
 
 
 

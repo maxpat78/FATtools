@@ -32,10 +32,11 @@ A BAT index of 0xFFFFFFFF signals a zeroed block not allocated physically:
 such value is kept until a block is written with all zeros, too. 
 
 PLEASE NOTE THAT ALL NUMBERS ARE IN BIG ENDIAN FORMAT! """
-import io, utils, struct, uuid, zlib, ctypes, time, os, math
+import io, struct, uuid, zlib, ctypes, time, os, math
 
 DEBUG = 0
-from debug import log
+import FATtools.utils as utils
+from FATtools.debug import log
 
 
 
@@ -58,7 +59,7 @@ class Footer(object):
     0x10: ('u64DataOffset', '>Q'), # absolute offset of next structure, or 0xFFFFFFFFFFFFFFFF for fixed disks
     0x18: ('dwTimestamp', '>I'), # creation time, in seconds since 1/1/2000 12:00 AM UTC
     0x1C: ('dwCreatorApp', '4s'), # creator application, here Py
-    0x20: ('dwCreatorVer', '>I'), # its version, here 0x20007 (2.7)
+    0x20: ('dwCreatorVer', '>I'), # its version, here 0x30009 (3.9)
     0x24: ('dwCreatorHost', '4s'), # Wi2k or Mac
     0x28: ('u64OriginalSize', '>Q'), # Initial size of the emulated disk
     0x30: ('u64CurrentSize', '>Q'), # Current size of the emulated disk
@@ -677,7 +678,7 @@ def mk_fixed(name, size):
     ft.u64DataOffset = 0xFFFFFFFFFFFFFFFF
     ft.dwTimestamp = int(time.mktime(time.gmtime()))-946681200
     ft.dwCreatorApp = b'Py  '
-    ft.dwCreatorVer = 0x20007
+    ft.dwCreatorVer = 0x30009
     ft.dwCreatorHost = b'Wi2k'
     ft.u64OriginalSize = size
     ft.u64CurrentSize = size
@@ -711,7 +712,7 @@ def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no'):
     ft.u64DataOffset = 512
     ft.dwTimestamp = int(time.mktime(time.gmtime()))-946681200
     ft.dwCreatorApp = b'Py  '
-    ft.dwCreatorVer = 0x20007
+    ft.dwCreatorVer = 0x30009
     ft.dwCreatorHost = b'Wi2k'
     ft.u64OriginalSize = size
     ft.u64CurrentSize = size
@@ -755,7 +756,7 @@ def mk_diff(name, base, overwrite='no'):
     parent_ts = int(time.mktime(time.gmtime(os.stat(base).st_mtime)))-946681200
     ima.footer.dwDiskType = 4
     ima.footer.dwCreatorApp = b'Py  '
-    ima.footer.dwCreatorVer = 0x20007
+    ima.footer.dwCreatorVer = 0x30009
     ima.footer.dwCreatorHost = b'Wi2k'
     ima.footer.dwTimestamp = int(time.mktime(time.gmtime()))-946681200
     ima.footer.sUniqueId = uuid.uuid4().bytes

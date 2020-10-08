@@ -7,10 +7,10 @@ DEBUG=0
 import sys, copy, os, struct, time, io, atexit
 from datetime import datetime
 from collections import OrderedDict
-from debug import log
 
-import utils
-from FAT import FAT, Chain
+from FATtools.debug import log
+from FATtools import utils
+from FATtools.FAT import FAT, Chain
 
 if DEBUG&8: import hexdump
 

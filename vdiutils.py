@@ -25,10 +25,11 @@ not modified after creation of the delta image.
 
 A Fixed VDI is like a Dynamic one, also: but all blocks are allocated at
 creation time."""
-import atexit, io, utils, struct, uuid, zlib, ctypes, time, os, math, glob
+import atexit, io, struct, uuid, zlib, ctypes, time, os, math, glob
 
 DEBUG = 0
-from debug import log
+import FATtools.utils as utils
+from FATtools.debug import log
 
 
 

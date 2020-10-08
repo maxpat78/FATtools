@@ -4,8 +4,8 @@ import sys, os, hashlib, logging, optparse, hexdump
 
 DEBUG=0
 
-import Volume
-from debug import log
+from FATtools import Volume
+from FATtools.debug import log
 
 class Stress(BaseException):
     pass

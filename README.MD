@@ -1,14 +1,14 @@
 FATtools3
 =========
 
-This is a refinement and extension of my FATtools provided in PyDiskTools on GitHub.
+This package is a refinement and extension of my FATtools provided in PyDiskTools on GitHub.
 
 Initial Python3 adaptation derives from 221c9fd commit of the Python2 one.
 
-Born to re-sort in an arbitrary order the directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3.7 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
+Born to re-sort in an arbitrary order the directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3.9 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
 
 It is able to open disk partitioned with both MBR or GPT and to help in partitioning.
-It can transparently create, read and write Dynamic and Differencing VHD and VDI disk images.
+It can transparently create, read and write Dynamic and Differencing VHD, VDI and VMDK disk images.
 
 Actually, following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; comparibility with Linux is not tested since long ago):
 - sector aligned read/writes with both file images and real disks
@@ -35,7 +35,7 @@ The most fragile area (and, thus, subject to bugs) was the caching mechanism, th
 Code is GPLed (look at GPL.TXT inside folder).
 
 
-Sample usage (see inside 'test' and 'sample' directories for more samples).
+Sample usage (see inside 'test' directory for more samples).
 
 
 At a glance
@@ -43,26 +43,27 @@ At a glance
 - to open an existing plain or VHD disk image, or real disk:
 ```
 # -*- coding: cp1252 -*-
-from Volume import *
+from FATtools.Volume import *
 disk = vopen('MyDiskImage.img', 'r+b', 'disk')
 ```
 
 - to make a single GPT partition from all disk space:
 ```
-gpt = Volume.partutils.partition(disk)
+from FATtools import partutils
+gpt = partutils.partition(disk)
 ```
 
 - to format such partition with the exFAT file system:
 ```
-import mkfat
-part = vopen('MyDiskImage.img', 'r+b', 'partition0')
+from FATtools import mkfat, Volume
+part = Volume.vopen('MyDiskImage.img', 'r+b', 'partition0')
 mkfat.exfat_mkfs(part, (gpt.partitions[0].u64EndingLBA-gpt.partitions[0].u64StartingLBA+1)*512)
 ```
 
 - to order root directory table in USB drive X:
 ```
 # -*- coding: cp1252 -*-
-from Volume import *
+from FATtools.Volume import *
 
 # Assuming we have DirA, DirB, DirC in this disk order into X:
 root = vopen('X:', 'r+b')

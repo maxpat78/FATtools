@@ -30,11 +30,12 @@ allocated at extent creation (FLAT).
 A virtual disk can be contained in a single monolithic file or span multiple
 files (a disk can actually reach 62TB but a GTE can address sectors in a 2 TB
 range only)."""
-import atexit, io, utils, struct, uuid, zlib, ctypes, time
+import atexit, io, struct, uuid, zlib, ctypes, time
 import os, math, re, random
 
 DEBUG = 0
-from debug import log
+import FATtools.utils as utils
+from FATtools.debug import log
 
 
 

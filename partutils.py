@@ -26,12 +26,13 @@ Se il settore finale LBA non è rappresentabile in CHS si usa la terna
 GPT adotta nel MBR di protezione la terna (1023, 255, 63) o FF FF FF e il
 tipo di partizione 0xEE."""
 
-import utils, struct
-from gptutils import *
+import struct
+from FATtools import utils
+from FATtools.gptutils import *
 
 DEBUG = 0
 
-from debug import log
+from FATtools.debug import log
 
 def chs2lba(c, h, s, max_hpc=16, max_spc=63):
 	# Max sectors per cylinder (track): 63

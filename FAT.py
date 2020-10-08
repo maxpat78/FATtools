@@ -8,8 +8,8 @@ import sys, copy, os, struct, time, io, atexit, functools
 from datetime import datetime
 from collections import OrderedDict
 from zlib import crc32
-import disk, utils
-from debug import log
+from FATtools import disk, utils
+from FATtools.debug import log
 
 if DEBUG&4: import hexdump
 

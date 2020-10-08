@@ -1,6 +1,6 @@
 # -*- coding: cp1252 -*-
 import sys, hashlib
-from Volume import vopen
+from FATtools.Volume import vopen
 
 if len(sys.argv) == 1:
     print ("Usage: sha1_chk DRIVE")

@@ -1,10 +1,11 @@
 # -*- coding: cp1252 -*-
 "Utilities to handle GPT partitions"
 
-import utils, struct, uuid, zlib, ctypes
+import struct, uuid, zlib, ctypes
 
 DEBUG = 0
-from debug import log
+from FATtools.debug import log
+from FATtools import utils
 
 # Common Windows Partition GUIDs
 partition_uuids = {

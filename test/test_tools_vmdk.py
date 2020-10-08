@@ -2,14 +2,17 @@
 
 VMDK_MODE = 0
 
-import os, sys, glob, ctypes, uuid, shutil, stress, partutils
+import os, sys, glob, ctypes, uuid, shutil
 
 import logging
 logging.basicConfig(level=logging.DEBUG, filename='test_vmdk_tools.log', filemode='w')
 
-from debug import log
+import hexdump
 
-import Volume, mkfat, vmdkutils, hexdump
+from FATtools.debug import log
+from FATtools import Volume, mkfat, vmdkutils, partutils
+import stress
+
 #~ Volume.DEBUG = 255
 #~ Volume.vmdkutils.DEBUG = 255
 #~ Volume.vhdutils.DEBUG = 255

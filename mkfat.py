@@ -1,6 +1,7 @@
-import utils, struct, disk, os, sys, pprint, optparse
-from FAT import *
-from mkexfat import exfat_mkfs
+import struct, os, sys, pprint, optparse
+from FATtools import utils, disk
+from FATtools.FAT import *
+from FATtools.mkexfat import exfat_mkfs
 
 
 nodos_asm_5Ah = b'\xB8\xC0\x07\x8E\xD8\xBE\x73\x00\xAC\x08\xC0\x74\x09\xB4\x0E\xBB\x07\x00\xCD\x10\xEB\xF2\xF4\xEB\xFD\x4E\x4F\x20\x44\x4F\x53\x00'

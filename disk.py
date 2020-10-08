@@ -5,7 +5,7 @@ from ctypes import *
 if os.name == 'nt':
     from ctypes.wintypes import *
 
-from debug import log
+from FATtools.debug import log
 #~ import hexdump
 
 DEBUG = 0

@@ -2,14 +2,15 @@
 
 VHD_MODE = 0
 
-import os, sys, glob, ctypes, uuid, shutil, stress, partutils
+import os, sys, glob, ctypes, uuid, shutil, logging
+import hexdump
 
-import logging
 logging.basicConfig(level=logging.DEBUG, filename='test_tools.log', filemode='w')
 
-from debug import log
+from FATtools.debug import log
+from FATtools import Volume, mkfat, vhdutils, partutils
+import stress
 
-import Volume, mkfat, vhdutils, hexdump
 #~ Volume.DEBUG = 255
 #~ Volume.vhdutils.DEBUG = 255
 #~ Volume.partutils.DEBUG = 255
@@ -46,6 +47,7 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
     else:
         print("Creating a GPT partition on disk")
         gpt = partutils.partition(f)
+    f.close() # always close, to avoid tstamp problems!
     
     print("Applying FAT File System on partition:", fat_type)
     log("Applying FAT File System on partition: %s", fat_type)
@@ -89,12 +91,13 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
     subdir = root.mkdir('T')
     Volume.copy_tree_in('.\T', subdir, printn, 2)
     root.flush()
+    #~ root.close() # always close, to avoid tstamp problems!
 
     if VHD_MODE:
         print("Creating a blank %.02f MiB Differencing VHD disk image, linked to previous one" % (fssize/(1<<20)))
         vhdutils.mk_diff(img_file[:-4]+'_delta.vhd', img_file, overwrite='yes')
 
-        root = Volume.vopen(img_file, 'r+b')
+        root = Volume.vopen(img_file[:-4]+'_delta.vhd', 'r+b')
         root.create('a.txt').write(b'CIAO')
         root.rmtree('T')
         root.flush()
@@ -116,6 +119,7 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
     #~ opts.programs=31 # exclude buggy dir cleaning
     opts.debug=7
     opts.sha1=1
+    opts.sha1chk=0
     opts.fix=0
     #~ stress.seed(4)
     if VHD_MODE:

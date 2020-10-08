@@ -14,7 +14,7 @@ else:
     from Tkinter import *
     import tkMessageBox as messagebox
 
-from Volume import *
+from FATtools.Volume import *
 
 DEBUG = 0
 

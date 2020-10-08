@@ -2,14 +2,17 @@
 
 VDI_MODE = 0
 
-import os, sys, glob, ctypes, uuid, shutil, stress, partutils
+import os, sys, glob, ctypes, uuid, shutil
 
 import logging
-logging.basicConfig(level=logging.DEBUG, filename='test_tools.log', filemode='w')
+logging.basicConfig(level=logging.DEBUG, filename='test_tools_vdi.log', filemode='w')
 
-from debug import log
+import hexdump
 
-import Volume, mkfat, vdiutils, hexdump
+from FATtools.debug import log
+from FATtools import Volume, mkfat, vdiutils, partutils
+import stress
+
 #~ Volume.DEBUG = 255
 #~ Volume.vhdutils.DEBUG = 255
 #~ Volume.partutils.DEBUG = 255
