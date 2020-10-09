@@ -44,8 +44,8 @@ At a glance
 
 - to create a dynamic 1TB VHD disk image with a single GPT partition and format it with exFAT:
 ```
-mkvdisk.py -s1T image.vhd
-mkfat.py -texfat -pgpt image.vhd
+py -m mkvdisk -s1T image.vhd
+py -m mkfat -texfat -pgpt image.vhd
 ```
 
 - to open an existing plain or VHD disk image, or real disk:
