@@ -3,7 +3,7 @@ import os, time, sys, re
 from FATtools import disk, utils, FAT, exFAT, partutils
 from FATtools import vhdutils, vdiutils, vmdkutils
 
-DEBUG = 2
+DEBUG = 0
 from FATtools.debug import log
 
 
@@ -13,7 +13,7 @@ def vopen(path, mode='rb', what='auto'):
     selects the volume in the first partition or disk; 'disk' selects the raw disk;
     'partitionN' tries to open partition number N; 'volume' tries to open a file
     system. """
-    if DEBUG&2: log("Volume.open in '%s' mode", what)
+    if DEBUG&2: log("vopen in '%s' mode", what)
     if type(path) in (disk.disk, vhdutils.Image, vdiutils.Image, vmdkutils.Image):
         if path.mode == mode:
             d = path

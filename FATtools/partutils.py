@@ -216,11 +216,11 @@ class MBR(object):
         part.dwFirstSectorLBA = dwFirstSectorLBA
         part.dwTotalSectors = dwTotalSectors
         if sFirstSectorCHS[0] > 1023:
-            part.sFirstSectorCHS = (0, 0, 1)
+            part.sFirstSectorCHS = chs2raw((0, 0, 1))
         else:
             part.sFirstSectorCHS = chs2raw(sFirstSectorCHS)
         if sLastSectorCHS[0] > 1023:
-            part.sLastSectorCHS = (1023, 254, 63)
+            part.sLastSectorCHS = chs2raw((1023, 254, 63))
         else:
             part.sLastSectorCHS = chs2raw(sLastSectorCHS)
         #~ if index==0:

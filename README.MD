@@ -3,7 +3,7 @@ FATtools3
 
 This package is a refinement and extension of my FATtools provided in PyDiskTools on GitHub.
 
-Manually install it under site-packages/FATtools!
+Manually install it under site-packages.
 
 Initial Python3 adaptation derives from 221c9fd commit of the Python2 one.
 
@@ -41,6 +41,12 @@ Sample usage (see inside 'test' directory for more samples).
 
 
 At a glance
+
+- to create a dynamic 1TB VHD disk image with a single GPT partition and format it with exFAT:
+```
+mkvdisk.py -s1T image.vhd
+mkfat.py -texfat -pgpt image.vhd
+```
 
 - to open an existing plain or VHD disk image, or real disk:
 ```
