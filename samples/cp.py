@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 
-import sys, argparse
+import sys, os, argparse, logging
 from FATtools import vhdutils, vdiutils, vmdkutils
 from FATtools import Volume
+
+DEBUG = 0
+from FATtools.debug import log
+
+logging.basicConfig(level=logging.DEBUG, filename='cp.log', filemode='w')
+
 
 
 def is_vdisk(s):
@@ -15,8 +21,7 @@ def is_vdisk(s):
             break
     return image_path
 
-def printn(s):
- print(s)
+def printn(s): print(s)
 
 
 
@@ -39,9 +44,16 @@ dest = args.items.pop()
 if is_vdisk(dest):
     dst_image = is_vdisk(dest)
     sub_path = dest[len(dst_image):]
+    if DEBUG: log("cp: target is virtual disk '%s', path '%s'", dst_image, sub_path)
     dest = Volume.vopen(dst_image, 'r+b')
     if sub_path:
         dest = dest.mkdir(sub_path[1:])
     Volume.copy_in(args.items, dest, printn, 2)
 else:
-    print ('NOT SUPPORTED (YET)')
+    if DEBUG: log("cp: target is real filesystem")
+    for it in args.items:
+        src_image = is_vdisk(it)
+        sub_path = it[len(src_image)+1:]
+        if DEBUG: log("cp: source is virtual disk '%s', path '%s'", src_image, sub_path)
+        src = Volume.vopen(src_image, 'rb')
+        Volume.copy_out(src, [sub_path], dest, printn, 2)
