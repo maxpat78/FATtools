@@ -1,5 +1,5 @@
 # -*- coding: cp1252 -*-
-import os, time, sys, re
+import os, time, sys, re, glob
 from FATtools import disk, utils, FAT, exFAT, partutils
 from FATtools import vhdutils, vdiutils, vmdkutils
 
@@ -171,6 +171,71 @@ def openvolume(part):
 
 
 
+def _preserve_attributes_in(attributes, st, target_dir, dst):
+    if attributes: # bit mask: 1=preserve creation time, 2=last modification, 3=last access
+        if attributes & 1:
+            tm = time.localtime(st.st_ctime)
+            if target_dir.fat.exfat:
+                dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
+                dst.Entry.dwCTime = dw
+                dst.chmsCTime = ms
+            else:
+                dst.Entry.wCDate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
+                dst.Entry.wCTime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec))
+
+        if attributes & 2:
+            tm = time.localtime(st.st_mtime)
+            if target_dir.fat.exfat:
+                dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
+                dst.Entry.dwMTime = dw
+                dst.chmsCTime = ms
+            else:
+                dst.Entry.wMDate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
+                dst.Entry.wMTime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec))
+
+        if attributes & 4:
+            tm = time.localtime(st.st_atime)
+            if target_dir.fat.exfat:
+                dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
+                dst.Entry.dwATime = dw
+                dst.chmsCTime = ms
+            else:
+                dst.Entry.wADate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
+                #~ dst.Entry.wATime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec)) # FAT does not support this!
+
+
+
+def copy_in(src_list, dest, callback=None, attributes=None, chunk_size=1<<20):
+    """Copies files and directories in 'src_list' to virtual 'dest' directory
+    table, 'chunk_size' bytes at a time, calling callback function if provided
+    and preserving date and times if desired."""
+    for it in src_list:
+        # If item is a wildcard expression, expand it and push to sources list
+        g = glob.glob(it)
+        if len(g) > 1:
+            src_list += g
+            continue
+        if os.path.isdir(it):
+            subdir = dest.mkdir(it)
+            copy_tree_in(it, subdir, callback, attributes, chunk_size)
+        elif os.path.isfile(it):
+            target_dir=dest
+            st = os.stat(it)
+            fp = open(it, 'rb')
+            # Create target, preallocating all clusters
+            dst = dest.create(it, (st.st_size+dest.boot.cluster-1)//dest.boot.cluster)
+            if callback: callback(it)
+            while 1:
+                s = fp.read(chunk_size)
+                if not s: break
+                dst.write(s)
+            target_dir=dest
+            _preserve_attributes_in(attributes, st, target_dir, dst)
+            fp.close()
+            dst.close()
+        else:
+            pass
+
 def copy_tree_in(base, dest, callback=None, attributes=None, chunk_size=1<<20):
     """Copy recursively files and directories under real 'base' path into
     virtual 'dest' directory table, 'chunk_size' bytes at a time, calling callback function if provided
@@ -205,39 +270,17 @@ def copy_tree_in(base, dest, callback=None, attributes=None, chunk_size=1<<20):
                 if not s: break
                 dst.write(s)
 
-            if attributes: # bit mask: 1=preserve creation time, 2=last modification, 3=last access
-                if attributes & 1:
-                    tm = time.localtime(st.st_ctime)
-                    if target_dir.fat.exfat:
-                        dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
-                        dst.Entry.dwCTime = dw
-                        dst.chmsCTime = ms
-                    else:
-                        dst.Entry.wCDate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
-                        dst.Entry.wCTime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec))
-
-
-                if attributes & 2:
-                    tm = time.localtime(st.st_mtime)
-                    if target_dir.fat.exfat:
-                        dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
-                        dst.Entry.dwMTime = dw
-                        dst.chmsCTime = ms
-                    else:
-                        dst.Entry.wMDate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
-                        dst.Entry.wMTime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec))
-
-
-                if attributes & 4:
-                    tm = time.localtime(st.st_atime)
-                    if target_dir.fat.exfat:
-                        dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
-                        dst.Entry.dwATime = dw
-                        dst.chmsCTime = ms
-                    else:
-                        dst.Entry.wADate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
-                        #~ dst.Entry.wATime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec)) # FAT does not support this!
+            _preserve_attributes_in(attributes, st, target_dir, dst)
             dst.close()
+            fp.close()
+
+
+
+def copy_out(src_list, dest, callback=None, attributes=None, chunk_size=1<<20):
+    """Copies files and directories in virtual 'src_list' to real 'dest' directory
+    'chunk_size' bytes at a time, calling callback function if provided
+    and preserving date and times if desired."""
+    pass
 
 
 
