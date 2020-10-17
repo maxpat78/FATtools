@@ -1295,28 +1295,6 @@ class Dirtable(object):
             for a,b,c in self.opendir(subdir).walk():
                 yield a, b, c
 
-    def list(self, bare=False):
-        "Simple directory listing, with size and last modification time"
-        tot_files = 0
-        tot_bytes = 0
-        tot_dirs = 0
-        files = []
-        if not bare: print("   Directory of", self.path, "\n")
-        for it in self.iterator():
-            if it.type != 5: continue
-            if bare:
-                print(it.Name())
-            else:
-                tot_bytes += it.u64DataLength
-                if it.IsDir(): tot_dirs += 1
-                else: tot_files += 1
-                mtime = datetime(*(it.DatetimeParse(it.dwMTime))).isoformat()[:-3].replace('T',' ')
-                print("%8s  %s  %s" % ((str(it.u64DataLength),'<DIR>')[it.IsDir()], mtime, it.Name()))
-        if not bare:
-            print("%18s Files    %s bytes" % (tot_files, tot_bytes))
-            print("%18s Directories %12s bytes free" % (tot_dirs, self.getdiskspace()[1]))
-
-
 
          #############################
         # HIGH LEVEL HELPER ROUTINES #

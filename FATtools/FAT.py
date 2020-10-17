@@ -1871,26 +1871,6 @@ class Dirtable(object):
         "Returns a list of file and directory names in this directory, sorted by on disk position"
         return [o.Name() for o in [o for o in self.iterator()]]
 
-    def list(self, bare=False):
-        "Simple directory listing, with size and last modification time"
-        print("   Directory of", self.path, "\n")
-        tot_files = 0
-        tot_bytes = 0
-        tot_dirs = 0
-        for it in self.iterator():
-            if it.IsLabel(): continue
-            if bare:
-                print(it.Name())
-            else:
-                tot_bytes += it.dwFileSize
-                if it.IsDir(): tot_dirs += 1
-                else: tot_files += 1
-                mtime = datetime(*(it.ParseDosDate(it.wMDate) + it.ParseDosTime(it.wMTime))).isoformat()[:-3].replace('T',' ')
-                print("%8s  %s  %s" % ((str(it.dwFileSize),'<DIR>')[it.IsDir()], mtime, it.Name()))
-        if not bare:
-            print("%18s Files    %s bytes" % (tot_files, tot_bytes))
-            print("%18s Directories %12s bytes free" % (tot_dirs, self.getdiskspace()[1]))
-
     def walk(self):
         """Walks across this directory and its childs. For each visited directory,
         returns a tuple (root, dirs, files) sorted in disk order. """
