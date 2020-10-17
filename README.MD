@@ -1,18 +1,14 @@
 FATtools3
 =========
 
-This package is a refinement and extension of my FATtools provided in PyDiskTools on GitHub.
-
 Manually install it under site-packages.
-
-Initial Python3 adaptation derives from 221c9fd commit of the Python2 one.
 
 Born to re-sort in an arbitrary order the directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3.9 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
 
 It is able to open disk partitioned with both MBR or GPT and to help in partitioning.
 It can transparently create, read and write Dynamic and Differencing VHD, VDI and VMDK disk images.
 
-Actually, following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; comparibility with Linux is not tested since long ago):
+Actually, following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not tested since long ago):
 - sector aligned read/writes with both file images and real disks
 - sector based caching mechanism (for both reading and writing) to speed-up FAT and directory table operations
 - run length encoded map (with tuples and dictionaries) of free clusters, free directory slots, allocated cluster chains
@@ -42,10 +38,17 @@ Sample usage (see inside 'test' directory for more samples).
 
 At a glance
 
-- to create a dynamic 1TB VHD disk image with a single GPT partition and format it with exFAT:
+- to create a dynamic 1TB VHD disk image with a single GPT partition and format it with exFAT from command line:
 ```
-py -m mkvdisk -s1T image.vhd
-py -m mkfat -texfat -pgpt image.vhd
+py -m mkvdisk -s 1T image.vhd
+py -m mkfat -t exfat -p gpt image.vhd
+```
+
+- to list contents in a disk image and copy items to/from it (command line, too):
+```
+py -m ls image1.vhd/py* image2.vdi/py*
+py -m cp C:\Python39\Lib\site-packages image.vhd/Python39/Lib
+py -m cp image.vhd/Python39 C:\ProgramData
 ```
 
 - to open an existing plain or VHD disk image, or real disk:
