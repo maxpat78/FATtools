@@ -12,10 +12,10 @@ from FATtools.debug import log
 #~ logging.basicConfig(level=logging.DEBUG, filename='ls.log', filemode='w')
 
 
-
-def ls(args, opts):
-    "Simple, DOS style directory listing, with size and last modification time"
+def _ls(v, filt, opts, depth=0):
+    "Scans an opened DirHandle"
     def _fmt_size(size):
+        "Internal function to format sizes"
         if size >= 10**10:
             sizes = {0:'B', 10:'K',20:'M',30:'G',40:'T',50:'E'}
             k = 0
@@ -25,10 +25,76 @@ def ls(args, opts):
         else:
             size = locale.format_string('%d', size, grouping=1)
         return size
-
     def _prn_line(name, mtime, size):
+        "Internal function to print a line of output"
         print("%s  %10s  %s" % (mtime.isoformat()[:-3].replace('T','  '), size, name))
-        
+
+    if not opts.bare: print("\n Directory of %s\n"%v.path)
+    tot_files = 0
+    tot_bytes = 0
+    tot_dirs = 0
+    table = [] # used to sort
+    dirs = [] # directories to traverse in recursive mode
+    for it in v.iterator():
+        isexfat = not hasattr(it,'IsLfn')
+        if isexfat:
+            if it.type != 5: continue
+        else:
+            if it.IsLabel(): continue
+        if filt:
+            if not fnmatch.fnmatch(it.Name(), filt):
+                continue
+        if opts.recursive and it.IsDir():
+            name = it.Name()
+            if name == '.' or name == '..': continue
+            dirs += [name]
+        if opts.bare and not opts.sort:
+            if opts.recursive:
+                print (os.path.join(v.path, it.Name()))
+            else:
+                print(it.Name())
+        else:
+            if isexfat:
+                tot_bytes += it.u64DataLength
+            else:
+                tot_bytes += it.dwFileSize
+            if it.IsDir(): tot_dirs += 1
+            else: tot_files += 1
+            if isexfat:
+                mtime = datetime(*(it.DatetimeParse(it.dwMTime)))
+                size = it.u64DataLength
+            else:
+                mtime = datetime(*(it.ParseDosDate(it.wMDate) + it.ParseDosTime(it.wMTime)))
+                size = it.dwFileSize
+            if opts.sort:
+                # 0=Name, 1=DIR?, 2=Size, 3=Date, 4=Ext
+                table += [(it.Name(), it.IsDir(), size, mtime, os.path.splitext(it.Name())[1].lower())]
+                continue
+            _prn_line(it.Name(), mtime, (_fmt_size(size),'<DIR>   ')[it.IsDir()])
+    if opts.sort:
+        for it in sorted(table, key=itemgetter(*opts.sort), reverse=opts.sort_reverse):
+            if opts.bare:
+                print(it[0])
+            else:
+                _prn_line(it[0], it[3], (_fmt_size(it[2]),'<DIR>   ')[it[1]])
+    if not opts.bare:
+        print("%18s Files    %s bytes" % (_fmt_size(tot_files), _fmt_size(tot_bytes)))
+        print("%18s Directories %12s bytes free" % (_fmt_size(tot_dirs), _fmt_size(v.getdiskspace()[1])))
+    if opts.recursive:
+        for d in dirs:
+            ff, dd, bb = _ls(v.opendir(d), filt, opts, depth+1)
+            tot_files += ff
+            tot_dirs += dd
+            tot_bytes += bb
+        if not opts.bare and not depth:
+            print("\n%18s Files    %s bytes" % (_fmt_size(tot_files), _fmt_size(tot_bytes)))
+            print("%18s Directories %12s bytes free" % (_fmt_size(tot_dirs), _fmt_size(v.getdiskspace()[1])))
+            return tot_files, tot_dirs, tot_bytes
+    return tot_files, tot_dirs, tot_bytes
+
+    
+def ls(args, opts):
+    "Simple, DOS style directory listing, with size and last modification time"
     for arg in args:
         filt = None # wildcard filter
         img = is_vdisk(arg) # image to open
@@ -46,49 +112,7 @@ def ls(args, opts):
         if not v:
             print('Invalid path: "%s"'%arg)
             continue
-        if not opts.bare: print("\n Directory of %s\n"%v.path)
-        tot_files = 0
-        tot_bytes = 0
-        tot_dirs = 0
-        table = [] # used to sort
-        for it in v.iterator():
-            isexfat = not hasattr(it,'IsLfn')
-            if isexfat:
-                if it.type != 5: continue
-            else:
-                if it.IsLabel(): continue
-            if filt:
-                if not fnmatch.fnmatch(it.Name(), filt):
-                    continue
-            if opts.bare and not opts.sort:
-                print(it.Name())
-            else:
-                if isexfat:
-                    tot_bytes += it.u64DataLength
-                else:
-                    tot_bytes += it.dwFileSize
-                if it.IsDir(): tot_dirs += 1
-                else: tot_files += 1
-                if isexfat:
-                    mtime = datetime(*(it.DatetimeParse(it.dwMTime)))
-                    size = it.u64DataLength
-                else:
-                    mtime = datetime(*(it.ParseDosDate(it.wMDate) + it.ParseDosTime(it.wMTime)))
-                    size = it.dwFileSize
-                if opts.sort:
-                    # 0=Name, 1=DIR?, 2=Size, 3=Date, 4=Ext
-                    table += [(it.Name(), it.IsDir(), size, mtime, os.path.splitext(it.Name())[1].lower())]
-                    continue
-                _prn_line(it.Name(), mtime, (_fmt_size(size),'<DIR>   ')[it.IsDir()])
-        if opts.sort:
-            for it in sorted(table, key=itemgetter(*opts.sort), reverse=opts.sort_reverse):
-                if opts.bare:
-                    print(it[0])
-                else:
-                    _prn_line(it[0], it[3], (_fmt_size(it[2]),'<DIR>   ')[it[1]])
-        if not opts.bare:
-            print("%18s Files    %s bytes" % (_fmt_size(tot_files), _fmt_size(tot_bytes)))
-            print("%18s Directories %12s bytes free" % (_fmt_size(tot_dirs), _fmt_size(v.getdiskspace()[1])))
+        _ls(v, filt, opts)
 
 
 def is_vdisk(s):
@@ -107,7 +131,7 @@ if __name__ == '__main__':
     locale.setlocale(locale.LC_ALL, locale.getdefaultlocale()[0])
     
     help_s = """
-    ls.py image.<vhd|vdi|vmdk|img|bin|raw|dsk>[/path] ...
+    ls.py [-b -r -s NSDE-!] image.<vhd|vdi|vmdk|img|bin|raw|dsk>[/path] ...
     """
     par = argparse.ArgumentParser(usage=help_s,
     formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -115,6 +139,7 @@ if __name__ == '__main__':
     epilog="Examples:\nls.py image.vhd\nls.py image.vhd/*.exe image.vhd/python39/dlls/*.pyd\n")
     par.add_argument('items', nargs='*')
     par.add_argument('-b', help='prints items names only', dest='bare', action="count", default=0)
+    par.add_argument('-r', help='recursive (descends into subdirectories)', dest='recursive', action="count", default=0)
     par.add_argument('-s', help='sorts by name/size/date/ext (N/S/D/E), - (reverse order), ! (directories first)', dest='sort', type=str, default='')
     args = par.parse_args()
 
@@ -128,6 +153,7 @@ if __name__ == '__main__':
 
     opts = opts()
     opts.bare = args.bare
+    opts.recursive = args.recursive
     opts.sort = args.sort
     opts.sort_reverse = 0
     opts.sort_dirfirst = 0
