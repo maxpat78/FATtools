@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-
-import sys, os, argparse, fnmatch, logging
+import sys, os, argparse, fnmatch, locale, logging
 from datetime import datetime
+from operator import itemgetter
+
 from FATtools import vhdutils, vdiutils, vmdkutils
 from FATtools import Volume
 
@@ -12,8 +13,22 @@ from FATtools.debug import log
 
 
 
-def ls(args, opts=0):
+def ls(args, opts):
     "Simple, DOS style directory listing, with size and last modification time"
+    def _fmt_size(size):
+        if size >= 10**10:
+            sizes = {0:'B', 10:'K',20:'M',30:'G',40:'T',50:'E'}
+            k = 0
+            for k in sorted(sizes):
+                if (size // (1<<k)) < 10**6: break
+            size = locale.format_string('%.02f%s', (size/(1<<k), sizes[k]), grouping=1)
+        else:
+            size = locale.format_string('%d', size, grouping=1)
+        return size
+
+    def _prn_line(name, mtime, size):
+        print("%s  %10s  %s" % (mtime.isoformat()[:-3].replace('T','  '), size, name))
+        
     for arg in args:
         filt = None # wildcard filter
         img = is_vdisk(arg) # image to open
@@ -31,10 +46,11 @@ def ls(args, opts=0):
         if not v:
             print('Invalid path: "%s"'%arg)
             continue
-        if not opts&1: print("\n Directory of %s\n"%v.path)
+        if not opts.bare: print("\n Directory of %s\n"%v.path)
         tot_files = 0
         tot_bytes = 0
         tot_dirs = 0
+        table = [] # used to sort
         for it in v.iterator():
             isexfat = not hasattr(it,'IsLfn')
             if isexfat:
@@ -44,7 +60,7 @@ def ls(args, opts=0):
             if filt:
                 if not fnmatch.fnmatch(it.Name(), filt):
                     continue
-            if opts&1:
+            if opts.bare and not opts.sort:
                 print(it.Name())
             else:
                 if isexfat:
@@ -54,23 +70,25 @@ def ls(args, opts=0):
                 if it.IsDir(): tot_dirs += 1
                 else: tot_files += 1
                 if isexfat:
-                    mtime = datetime(*(it.DatetimeParse(it.dwMTime))).isoformat()[:-3].replace('T','  ')
+                    mtime = datetime(*(it.DatetimeParse(it.dwMTime)))
                     size = it.u64DataLength
                 else:
-                    mtime = datetime(*(it.ParseDosDate(it.wMDate) + it.ParseDosTime(it.wMTime))).isoformat()[:-3].replace('T','  ')
+                    mtime = datetime(*(it.ParseDosDate(it.wMDate) + it.ParseDosTime(it.wMTime)))
                     size = it.dwFileSize
-                if size >= 10**10:
-                    sizes = {0:'B', 10:'K',20:'M',30:'G',40:'T',50:'E'}
-                    k = 0
-                    for k in sorted(sizes):
-                        if (size // (1<<k)) < 10**6: break
-                    size = '%.02f%s' % (size/(1<<k), sizes[k])
+                if opts.sort:
+                    # 0=Name, 1=DIR?, 2=Size, 3=Date, 4=Ext
+                    table += [(it.Name(), it.IsDir(), size, mtime, os.path.splitext(it.Name())[1].lower())]
+                    continue
+                _prn_line(it.Name(), mtime, (_fmt_size(size),'<DIR>   ')[it.IsDir()])
+        if opts.sort:
+            for it in sorted(table, key=itemgetter(*opts.sort), reverse=opts.sort_reverse):
+                if opts.bare:
+                    print(it[0])
                 else:
-                    size = str(size)
-                print("%s  %10s  %s" % (mtime, (size,'<DIR>   ')[it.IsDir()], it.Name()))
-        if not opts&1:
-            print("%18s Files    %s bytes" % (tot_files, tot_bytes))
-            print("%18s Directories %12s bytes free" % (tot_dirs, v.getdiskspace()[1]))
+                    _prn_line(it[0], it[3], (_fmt_size(it[2]),'<DIR>   ')[it[1]])
+        if not opts.bare:
+            print("%18s Files    %s bytes" % (_fmt_size(tot_files), _fmt_size(tot_bytes)))
+            print("%18s Directories %12s bytes free" % (_fmt_size(tot_dirs), _fmt_size(v.getdiskspace()[1])))
 
 
 def is_vdisk(s):
@@ -86,6 +104,8 @@ def is_vdisk(s):
 
 
 if __name__ == '__main__':
+    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale()[0])
+    
     help_s = """
     ls.py image.<vhd|vdi|vmdk|img|bin|raw|dsk>[/path] ...
     """
@@ -94,6 +114,8 @@ if __name__ == '__main__':
     description="Lists files and directories in a supported virtual disk image.\nWildcards accepted.",
     epilog="Examples:\nls.py image.vhd\nls.py image.vhd/*.exe image.vhd/python39/dlls/*.pyd\n")
     par.add_argument('items', nargs='*')
+    par.add_argument('-b', help='prints items names only', dest='bare', action="count", default=0)
+    par.add_argument('-s', help='sorts by name/size/date/ext (N/S/D/E), - (reverse order), ! (directories first)', dest='sort', type=str, default='')
     args = par.parse_args()
 
     if len(args.items) < 1:
@@ -101,4 +123,31 @@ if __name__ == '__main__':
         par.print_help()
         sys.exit(1)
 
-    ls(args.items)
+    class opts():
+        pass
+
+    opts = opts()
+    opts.bare = args.bare
+    opts.sort = args.sort
+    opts.sort_reverse = 0
+    opts.sort_dirfirst = 0
+    
+    if args.sort:
+        opts.sort = []
+        for c in args.sort:
+            if  c == '-':
+                opts.sort_reverse = 1
+                continue
+            if c == '!':
+                opts.sort_dirfirst = 1
+                continue
+            if c not in 'NSDE':
+                print("ls error: unknown sort method specified '%s'!"%c)
+                par.print_help()
+                sys.exit(1)
+            opts.sort += [{'N':0,'S':2,'D':3,'E':4}[c]]
+        if opts.sort_dirfirst:
+            opts.sort.insert(0, 1)
+        opts.sort = tuple(opts.sort)
+
+    ls(args.items, opts)
