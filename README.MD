@@ -44,11 +44,12 @@ py -m mkvdisk -s 1T image.vhd
 py -m mkfat -t exfat -p gpt image.vhd
 ```
 
-- to list contents in a disk image and copy items to/from it (command line, too):
+- to list contents in a disk image, copy items to/from it and erase them (command line, too):
 ```
 py -m ls image1.vhd/py* image2.vdi/py*
 py -m cp C:\Python39\Lib\site-packages image.vhd/Python39/Lib
 py -m cp image.vhd/Python39 C:\ProgramData
+py -m rm image.vhd/Python39
 ```
 
 - to open an existing plain or VHD disk image, or real disk:
