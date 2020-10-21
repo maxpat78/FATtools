@@ -7,9 +7,7 @@ from FATtools import Volume
 DEBUG = 0
 from FATtools.debug import log
 
-logging.basicConfig(level=logging.DEBUG, filename='cp.log', filemode='w')
-
-
+#~ logging.basicConfig(level=logging.DEBUG, filename='cp.log', filemode='w')
 
 def is_vdisk(s):
     "Returns the base virtual disk image path if it contains a known extension or an empty string"

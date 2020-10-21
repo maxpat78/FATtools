@@ -1744,7 +1744,7 @@ class Dirtable(object):
                 if DEBUG&4: log("Can't erase non empty directory slot @%d (pointing at #%d)", e._pos, e.Start())
                 return 0
         start = e.Start()
-        if start in self.dirtable:
+        if start in self.dirtable and self.dirtable[start]['Handle']:
             if DEBUG&4: log("Marking open Handle for %Xh as invalid", start)
             self.dirtable[start]['Handle'].IsValid = False # 20190413: prevents post-mortem updating
         e.Start(0)
