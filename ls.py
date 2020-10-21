@@ -29,6 +29,8 @@ def _ls(v, filt, opts, depth=0):
         "Internal function to print a line of output"
         print("%s  %16s  %s" % (mtime.isoformat()[:-3].replace('T','  '), size, name))
 
+    isexfat = 'exFAT' in str(type(v))
+
     if not opts.bare: print("\n Directory of %s\n"%v.path)
     tot_files = 0
     tot_bytes = 0
@@ -36,7 +38,6 @@ def _ls(v, filt, opts, depth=0):
     table = [] # used to sort
     dirs = [] # directories to traverse in recursive mode
     for it in v.iterator():
-        isexfat = 'exFAT' in str(type(it))
         if isexfat:
             if it.type != 5: continue
         else:
