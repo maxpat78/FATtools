@@ -36,7 +36,7 @@ def _ls(v, filt, opts, depth=0):
     table = [] # used to sort
     dirs = [] # directories to traverse in recursive mode
     for it in v.iterator():
-        isexfat = not hasattr(it,'IsLfn')
+        isexfat = 'exFAT' in str(type(it))
         if isexfat:
             if it.type != 5: continue
         else:
