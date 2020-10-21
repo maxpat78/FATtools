@@ -16,7 +16,7 @@ def _ls(v, filt, opts, depth=0):
     "Scans an opened DirHandle"
     def _fmt_size(size):
         "Internal function to format sizes"
-        if size >= 10**10:
+        if size >= 10**12:
             sizes = {0:'B', 10:'K',20:'M',30:'G',40:'T',50:'E'}
             k = 0
             for k in sorted(sizes):
@@ -27,7 +27,7 @@ def _ls(v, filt, opts, depth=0):
         return size
     def _prn_line(name, mtime, size):
         "Internal function to print a line of output"
-        print("%s  %10s  %s" % (mtime.isoformat()[:-3].replace('T','  '), size, name))
+        print("%s  %16s  %s" % (mtime.isoformat()[:-3].replace('T','  '), size, name))
 
     if not opts.bare: print("\n Directory of %s\n"%v.path)
     tot_files = 0
@@ -46,7 +46,6 @@ def _ls(v, filt, opts, depth=0):
                 continue
         if opts.recursive and it.IsDir():
             name = it.Name()
-            if name == '.' or name == '..': continue
             dirs += [name]
         if opts.bare and not opts.sort:
             if opts.recursive:
@@ -79,17 +78,18 @@ def _ls(v, filt, opts, depth=0):
                 _prn_line(it[0], it[3], (_fmt_size(it[2]),'<DIR>   ')[it[1]])
     if not opts.bare:
         print("%18s Files    %s bytes" % (_fmt_size(tot_files), _fmt_size(tot_bytes)))
-        print("%18s Directories %12s bytes free" % (_fmt_size(tot_dirs), _fmt_size(v.getdiskspace()[1])))
     if opts.recursive:
         for d in dirs:
+            if d == '.' or d == '..': continue
             ff, dd, bb = _ls(v.opendir(d), filt, opts, depth+1)
             tot_files += ff
             tot_dirs += dd
             tot_bytes += bb
-        if not opts.bare and not depth:
-            print("\n%18s Files    %s bytes" % (_fmt_size(tot_files), _fmt_size(tot_bytes)))
-            print("%18s Directories %12s bytes free" % (_fmt_size(tot_dirs), _fmt_size(v.getdiskspace()[1])))
-            return tot_files, tot_dirs, tot_bytes
+    if not opts.bare and not depth:
+        if opts.recursive:
+            print ("\n     Total items listed:")
+            print("%18s Files    %s bytes" % (_fmt_size(tot_files), _fmt_size(tot_bytes)))
+        print("%18s Directories %12s bytes free" % (_fmt_size(tot_dirs), _fmt_size(v.getdiskspace()[1])))
     return tot_files, tot_dirs, tot_bytes
 
     
