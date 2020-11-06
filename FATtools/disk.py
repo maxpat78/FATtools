@@ -6,18 +6,10 @@ if os.name == 'nt':
     from ctypes.wintypes import *
 
 from FATtools.debug import log
+from FATtools.utils import myfile
 #~ import hexdump
 
 DEBUG = 0
-
-
-class myfile(io.FileIO):
-    "Wrapper for file object whose read member returns a bytearray"
-    def __init__ (self, *args, **kwargs):
-        super(myfile, self).__init__ (*args, **kwargs)
-
-    def read(self, size=-1):
-        return bytearray(super(myfile, self).read(size))
 
 
 

@@ -1,70 +1,15 @@
 # -*- coding: cp1252 -*-
+
 #
 # High-level functions to open disks, partitions, volumes and play with them easily.
 #
 #
-
 import os, time, sys, re, glob, fnmatch
 from FATtools import disk, utils, FAT, exFAT, partutils
-from FATtools import vhdutils, vdiutils, vmdkutils
+from FATtools import vhdutils, vhdxutils, vdiutils, vmdkutils
 
 DEBUG = 0
 from FATtools.debug import log
-
-def _preserve_attributes_in(attributes, st, target_dir, dst):
-    if attributes: # bit mask: 1=preserve creation time, 2=last modification, 3=last access
-        if attributes & 1:
-            tm = time.localtime(st.st_ctime)
-            if target_dir.fat.exfat:
-                dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
-                dst.Entry.dwCTime = dw
-                dst.chmsCTime = ms
-            else:
-                dst.Entry.wCDate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
-                dst.Entry.wCTime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec))
-
-        if attributes & 2:
-            tm = time.localtime(st.st_mtime)
-            if target_dir.fat.exfat:
-                dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
-                dst.Entry.dwMTime = dw
-                dst.chmsCTime = ms
-            else:
-                dst.Entry.wMDate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
-                dst.Entry.wMTime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec))
-
-        if attributes & 4:
-            tm = time.localtime(st.st_atime)
-            if target_dir.fat.exfat:
-                dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
-                dst.Entry.dwATime = dw
-                dst.chmsCTime = ms
-            else:
-                dst.Entry.wADate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
-                #~ dst.Entry.wATime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec)) # FAT does not support this!
-
-def _preserve_attributes_out(attributes, base, fpi, dst):
-    if attributes: # bit mask: 1=preserve creation time, 2=last modification, 3=last access
-        if attributes & 1:
-            pass # utime does not support this
-        if attributes & 2:
-            if base.fat.exfat:
-                wTime = fpi.Entry.dwMTime & 0xFFFF
-                wDate = fpi.Entry.dwMTime >> 16
-                MTime = FAT.FATDirentry.ParseDosDate(wDate) + FAT.FATDirentry.ParseDosTime(wTime) + (0,0,0)
-                os.utime(dst, (0, time.mktime(MTime)))
-            else:
-                MTime = fpi.Entry.ParseDosDate(fpi.Entry.wMDate) + fpi.Entry.ParseDosTime(fpi.Entry.wMTime) + (0,0,0)
-                os.utime(dst, (0, time.mktime(MTime)))
-        if attributes & 4:
-            if base.fat.exfat:
-                wTime = fpi.Entry.dwATime & 0xFFFF
-                wDate = fpi.Entry.dwATime >> 16
-                ATime = FAT.FATDirentry.ParseDosDate(wDate) + FAT.FATDirentry.ParseDosTime(wTime) + (0,0,0)
-                os.utime(dst, (0, time.mktime(ATime)))
-            else:
-                ATime = fpi.Entry.ParseDosDate(fpi.Entry.wADate) + (0,0,0,0,0,0)
-                os.utime(dst, (time.mktime(ATime), 0))
 
 
 
@@ -85,6 +30,8 @@ def vopen(path, mode='rb', what='auto'):
             path = '\\\\.\\'+path
         if path.lower().endswith('.vhd'): # VHD image
             d = vhdutils.Image(path, mode)
+        elif path.lower().endswith('.vhdx'): # VHDX image
+            d = vhdxutils.Image(path, mode)
         elif path.lower().endswith('.vdi'): # VDI image
             d = vdiutils.Image(path, mode)
         elif path.lower().endswith('.vmdk'): # VMDK image
@@ -231,6 +178,63 @@ def openvolume(part):
 
 
 
+def _preserve_attributes_in(attributes, st, target_dir, dst):
+    if attributes: # bit mask: 1=preserve creation time, 2=last modification, 3=last access
+        if attributes & 1:
+            tm = time.localtime(st.st_ctime)
+            if target_dir.fat.exfat:
+                dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
+                dst.Entry.dwCTime = dw
+                dst.chmsCTime = ms
+            else:
+                dst.Entry.wCDate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
+                dst.Entry.wCTime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec))
+
+        if attributes & 2:
+            tm = time.localtime(st.st_mtime)
+            if target_dir.fat.exfat:
+                dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
+                dst.Entry.dwMTime = dw
+                dst.chmsCTime = ms
+            else:
+                dst.Entry.wMDate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
+                dst.Entry.wMTime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec))
+
+        if attributes & 4:
+            tm = time.localtime(st.st_atime)
+            if target_dir.fat.exfat:
+                dw, ms = exFAT.exFATDirentry.MakeDosDateTimeEx((tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
+                dst.Entry.dwATime = dw
+                dst.chmsCTime = ms
+            else:
+                dst.Entry.wADate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
+                #~ dst.Entry.wATime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec)) # FAT does not support this!
+
+def _preserve_attributes_out(attributes, base, fpi, dst):
+            if attributes: # bit mask: 1=preserve creation time, 2=last modification, 3=last access
+                if attributes & 1:
+                    pass # utime does not support this
+                if attributes & 2:
+                    if base.fat.exfat:
+                        wTime = fpi.Entry.dwMTime & 0xFFFF
+                        wDate = fpi.Entry.dwMTime >> 16
+                        MTime = FAT.FATDirentry.ParseDosDate(wDate) + FAT.FATDirentry.ParseDosTime(wTime) + (0,0,0)
+                        os.utime(dst, (0, time.mktime(MTime)))
+                    else:
+                        MTime = fpi.Entry.ParseDosDate(fpi.Entry.wMDate) + fpi.Entry.ParseDosTime(fpi.Entry.wMTime) + (0,0,0)
+                        os.utime(dst, (0, time.mktime(MTime)))
+                if attributes & 4:
+                    if base.fat.exfat:
+                        wTime = fpi.Entry.dwATime & 0xFFFF
+                        wDate = fpi.Entry.dwATime >> 16
+                        ATime = FAT.FATDirentry.ParseDosDate(wDate) + FAT.FATDirentry.ParseDosTime(wTime) + (0,0,0)
+                        os.utime(dst, (0, time.mktime(ATime)))
+                    else:
+                        ATime = fpi.Entry.ParseDosDate(fpi.Entry.wADate) + (0,0,0,0,0,0)
+                        os.utime(dst, (time.mktime(ATime), 0))
+
+
+
 def copy_in(src_list, dest, callback=None, attributes=None, chunk_size=1<<20):
     """Copies files and directories in 'src_list' to virtual 'dest' directory
     table, 'chunk_size' bytes at a time, calling callback function if provided
@@ -250,14 +254,19 @@ def copy_in(src_list, dest, callback=None, attributes=None, chunk_size=1<<20):
             fp = open(it, 'rb')
             # Create target, preallocating all clusters
             it = os.path.basename(it) # we want only file/dir name in target!
-            dst = dest.create(it, (st.st_size+dest.boot.cluster-1)//dest.boot.cluster)
+            is_single_file = str(type(dest)).find('Handle') > -1
+            if is_single_file:
+                dst = dest
+            else:
+                dst = dest.create(it, (st.st_size+dest.boot.cluster-1)//dest.boot.cluster)
             if callback: callback(it)
             while 1:
                 s = fp.read(chunk_size)
                 if not s: break
                 dst.write(s)
             target_dir=dest
-            _preserve_attributes_in(attributes, st, target_dir, dst)
+            if not is_single_file:
+                _preserve_attributes_in(attributes, st, target_dir, dst)
             fp.close()
             dst.close()
         else:
@@ -335,7 +344,13 @@ def copy_out(base, src_list, dest, callback=None, attributes=None, chunk_size=1<
             copy_tree_out(fpi, os.path.join(dest,it), callback, attributes, chunk_size)
             continue
         it = os.path.basename(it) # we want only file/dir name in target!
-        dst = os.path.join(dest, it)
+        if os.path.isdir(dest):
+            dst = os.path.join(dest, it)
+        else:
+            if len(src_list) == 1:
+                dst = dest
+            else:
+                raise FileNotFoundError("Can't copy in '%s', target is not a directory!"%dest)
         fpo = open(dst, 'wb')
         if DEBUG&2: log("copy_out: target is '%s'", dst)
         if callback: callback(dst)

@@ -3,10 +3,10 @@ FATtools3
 
 Manually install it under site-packages.
 
-Born to re-sort in an arbitrary order the directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3.9 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
+Born to re-sort directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3.9 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
 
 It is able to open disk partitioned with both MBR or GPT and to help in partitioning.
-It can transparently create, read and write Dynamic and Differencing VHD, VDI and VMDK disk images.
+It can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images.
 
 Actually, following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not tested since long ago):
 - sector aligned read/writes with both file images and real disks
@@ -18,7 +18,7 @@ Actually, following features are implemented (mostly in Python, with a few ctype
 - tools to open, create, rename, list and delete files and directories, and to partition disks
 - facilities to sort, clean and shrink directory tables
 - file fragmentation calculator
-- mkfat tool to properly apply a FAT12/16/32 or exFAT filesystem to a block device (file or disk) and let CHKDSK be happy with it (included exFAT compressed Up-Case table generator)
+- mkfat tool to properly (partition and) apply a FAT12/16/32 or exFAT filesystem to a block device (file or disk) and let CHKDSK be happy with it (included exFAT compressed Up-Case table generator)
 
 *Obviously, since a filesystem is an extremely complex and delicate matter, and big bugs may lay around, you'll USE IT TOTALLY AT YOUR OWN RISK!* But it seems quite stable and usable, now.
 
@@ -33,6 +33,10 @@ The most fragile area (and, thus, subject to bugs) was the caching mechanism, th
 Code is GPLed (look at GPL.TXT inside folder).
 
 
+[1] VHDX Log stream is not actually supported.
+
+
+
 Sample usage (see inside 'test' directory for more samples).
 
 
@@ -42,6 +46,11 @@ At a glance
 ```
 py -m mkvdisk -s 1T image.vhd
 py -m mkfat -t exfat -p gpt image.vhd
+```
+
+- to create a differencing VDI disk image from command line:
+```
+py -m mkvdisk -b image.vdi delta.vdi
 ```
 
 - to list contents in a disk image, copy items to/from it and erase them (command line, too):

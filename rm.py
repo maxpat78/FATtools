@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys, os, argparse, logging, fnmatch
-from FATtools import vhdutils, vdiutils, vmdkutils
 from FATtools import Volume
+from FATtools.utils import myfile, is_vdisk
 
 from FATtools.debug import log
 
@@ -9,15 +9,6 @@ DEBUG = 0
 
 #~ logging.basicConfig(level=logging.DEBUG, filename='rm.log', filemode='w')
 
-def is_vdisk(s):
-    "Returns the base virtual disk image path if it contains a known extension or an empty string"
-    image_path=''
-    for ext in ('vhd', 'vdi', 'vmdk', 'img', 'dsk', 'raw', 'bin'):
-        if '.'+ext in s.lower():
-            i = s.lower().find(ext)
-            image_path = s[:i+len(ext)]
-            break
-    return image_path
 
 def _rm(v, args):
     for it in args:

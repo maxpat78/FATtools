@@ -37,16 +37,7 @@ import io, struct, uuid, zlib, ctypes, time, os, math
 DEBUG = 0
 import FATtools.utils as utils
 from FATtools.debug import log
-
-
-
-class myfile(io.FileIO):
-    "Wrapper for file object whose read member returns a bytearray"
-    def __init__ (self, *args, **kwargs):
-        super(myfile, self).__init__ (*args, **kwargs)
-
-    def read(self, size=-1):
-        return bytearray(super(myfile, self).read(size))
+from FATtools.utils import myfile
 
 
 
@@ -379,6 +370,7 @@ class Image(object):
             if not self.header.isvalid():
                 raise BaseException("VHD Image Dynamic Header is not valid!")
             self.block = self.header.dwBlockSize
+            self.zero = bytearray(self.block)
             self.bat = BAT(self.stream, self.header.u64TableOffset, self.header.dwMaxTableEntries, self.block)
             self.bitmap_size = max(512, (self.block//512)//8) # bitmap sectors size
             if self.bat.isvalid < 0:
@@ -421,7 +413,6 @@ class Image(object):
             if self.stream.tell() - 512 != self.footer.u64CurrentSize:
                 raise BaseException("VHD Fixed Image actual size does not match that stored in Footer!")
         self.size = self.footer.u64CurrentSize
-        self.zero = bytearray(self.block)
         self.seek(0)
 
     def cache_flush(self):

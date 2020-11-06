@@ -36,16 +36,7 @@ import os, math, re, random
 DEBUG = 0
 import FATtools.utils as utils
 from FATtools.debug import log
-
-
-
-class myfile(io.FileIO):
-    "Wrapper for file object whose read member returns a bytearray"
-    def __init__ (self, *args, **kwargs):
-        super(myfile, self).__init__ (*args, **kwargs)
-
-    def read(self, size=-1):
-        return bytearray(super(myfile, self).read(size))
+from FATtools.utils import myfile
 
 
 

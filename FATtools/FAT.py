@@ -704,7 +704,7 @@ class Chain(object):
                 found=1
                 break
         if not found:
-            raise FATException("FATAL! maxrun4len did NOT found current LCN!\n%s\n%s" % (self.runs, self.lastvlcn))
+            raise FATException("FATAL! maxrun4len did NOT find current LCN!\n%s\n%s" % (self.runs, self.lastvlcn))
         left = start+count-self.lastvlcn[1] # clusters to end of run
         run = min(n, left)
         maxchunk = run*self.boot.cluster

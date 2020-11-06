@@ -3,8 +3,8 @@ import sys, os, argparse, fnmatch, locale, logging
 from datetime import datetime
 from operator import itemgetter
 
-from FATtools import vhdutils, vdiutils, vmdkutils
 from FATtools import Volume
+from FATtools.utils import is_vdisk
 
 DEBUG = 0
 from FATtools.debug import log
@@ -116,23 +116,12 @@ def ls(args, opts):
         _ls(v, filt, opts)
 
 
-def is_vdisk(s):
-    "Returns the base virtual disk image path if it contains a known extension or an empty string"
-    image_path=''
-    for ext in ('vhd', 'vdi', 'vmdk', 'img', 'dsk', 'raw', 'bin'):
-        if '.'+ext in s.lower():
-            i = s.lower().find(ext)
-            image_path = s[:i+len(ext)]
-            break
-    return image_path
-
-
 
 if __name__ == '__main__':
     locale.setlocale(locale.LC_ALL, locale.getdefaultlocale()[0])
     
     help_s = """
-    ls.py [-b -r -s NSDE-!] image.<vhd|vdi|vmdk|img|bin|raw|dsk>[/path] ...
+    ls.py [-b -r -s NSDE-!] image.<vhd|vhdx|vdi|vmdk|img|bin|raw|dsk>[/path] ...
     """
     par = argparse.ArgumentParser(usage=help_s,
     formatter_class=argparse.RawDescriptionHelpFormatter,

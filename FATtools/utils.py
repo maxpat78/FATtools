@@ -1,5 +1,23 @@
 # -*- coding: cp1252 -*-
-import struct
+import io, struct
+
+class myfile(io.FileIO):
+    "Wrapper for file object whose read member returns a bytearray"
+    def __init__ (self, *args, **kwargs):
+        super(myfile, self).__init__ (*args, **kwargs)
+
+    def read(self, size=-1):
+        return bytearray(super(myfile, self).read(size))
+
+def is_vdisk(s):
+    "Returns the base virtual disk image path if it contains a known extension or an empty string"
+    image_path=''
+    for ext in ('vhdx', 'vhd', 'vdi', 'vmdk', 'img', 'dsk', 'raw', 'bin'):
+        if '.'+ext in s.lower():
+            i = s.lower().find(ext)
+            image_path = s[:i+len(ext)]
+            break
+    return image_path
 
 def class2str(c, s):
     "Pretty-prints class contents"

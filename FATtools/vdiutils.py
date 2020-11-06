@@ -30,16 +30,7 @@ import atexit, io, struct, uuid, zlib, ctypes, time, os, math, glob
 DEBUG = 0
 import FATtools.utils as utils
 from FATtools.debug import log
-
-
-
-class myfile(io.FileIO):
-    "Wrapper for file object whose read member returns a bytearray"
-    def __init__ (self, *args, **kwargs):
-        super(myfile, self).__init__ (*args, **kwargs)
-
-    def read(self, size=-1):
-        return bytearray(super(myfile, self).read(size))
+from FATtools.utils import myfile
 
 
 
@@ -238,10 +229,10 @@ class Image(object):
 
     def has_block(self, i):
         "Tests if a block is effectively allocated by the image or its parent"
+        if self.bat[i] != 0xFFFFFFFF: # unallocated
+            return True
         if self.Parent:
             return self.Parent.has_block(i)
-        if self.bat[i] not in (0xFFFFFFFE, 0xFFFFFFFF):
-            return True
         return False
 
     def cache_flush(self):
@@ -264,6 +255,8 @@ class Image(object):
         if DEBUG&8: log("%s: final _pos is 0x%X", self.name, self._pos)
         if self._pos >= self.size:
             raise BaseException("%s: can't seek @0x%X past disk end!" % (self.name, self._pos))
+        if self.Parent:
+            self.Parent.seek(self._pos) # propagate seek through a parents chain
 
     def tell(self):
         return self._pos
@@ -302,7 +295,7 @@ class Image(object):
                 size=0
             self._pos += got
             if block==0xFFFFFFFF or block==0xFFFFFFFE:
-                if self.Parent:
+                if self.Parent and block==0xFFFFFFFF:
                     if DEBUG&4: log("%s: reading %d bytes from parent", self.name, got)
                     self.Parent.seek(self._pos-got)
                     buf += self.Parent.read(got)
