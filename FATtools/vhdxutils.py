@@ -59,6 +59,7 @@ TODO:
 - Log (Metadata and BAT regions, bitmap sectors)"""
 import io, struct, uuid, zlib, ctypes, time, os, math
 from FATtools.crc32c import crc_update
+from FATtools.vhdxlog import LogStream
 from FATtools.utils import myfile
 
 import FATtools.utils as utils
@@ -657,55 +658,6 @@ class BlockBitmap(object):
             if DEBUG&8: log("set B={0:08b}".format(B))
 
 
-class LogEntry(object):
-    "Log Entry"
-    layout = { # { offset: (name, unpack string) }
-    0x00: ('sSignature', '4s'), # loge
-    0x04: ('dwChecksum', '<I'), # CRC-32C over the first dwEntryLength bytes, zeroed this field
-    0x08: ('dwEntryLength', '<I'), # entry length (4K multiple)
-    0x0C: ('dwTail', '<I'), # offset of the 1st entry in the sequence
-    0x10: ('u64SequenceNumber', '<Q'), # entry index
-    0x18: ('u64DescriptorCount', '<Q'), # number of descriptors in this entry
-    0x20: ('dwReserved', '<I'), # zero
-    0x24: ('sLogGuid', '16s'), # GUID present in the VHDX Header at write time (valid if they match)
-    0x34: ('u64FlushedFileOffset', '<Q'), # VHDX file size at write time?
-    0x3C: ('u64LastFileOffset', '<Q'), # min VHDX file size required to store all structures at write time (?!)
-    } # Size = 0x1000 (4096 byte)
-
-    def __init__ (self, s=None, offset=0, stream=None):
-        self._i = 0
-        self._pos = offset # base offset
-        self._buf = s or bytearray(4096)
-        self.stream = stream
-        self._kv = self.layout.copy()
-        self._vk = {} # { name: offset}
-        for k, v in list(self._kv.items()):
-            self._vk[v[0]] = k
-    
-    __getattr__ = utils.common_getattr
-
-    crc = global_crc
-
-    def pack(self):
-        "Updates internal buffer"
-        self.dwChecksum = 0
-        for k, v in list(self._kv.items()):
-            self._buf[k:k+struct.calcsize(v[1])] = struct.pack(v[1], getattr(self, v[0]))
-        self._buf[4:8] = mk_crc(self._buf) # updates checksum
-        return self._buf
-
-    def __str__ (self):
-        return utils.class2str(self, "VHDX Log Entry @%X\n" % self._pos)
-
-    def isvalid(self):
-        if self.sSignature != b'loge':
-            return 0
-        if self.dwChecksum != struct.unpack("<I", self.crc())[0]:
-            if DEBUG&4: log("VHDX Log Entry checksum 0x%X stored != 0x%X calculated", self.dwChecksum, struct.unpack("<I", self.crc())[0])
-            return 0
-        return 1
-
-
 class Image(object):
     def __init__ (self, name, mode='rb', _fparams=0):
         # Flags for GUID updates at first write operation
@@ -743,8 +695,14 @@ class Image(object):
             self.header = h1
         else:
             self.header = h2
+        # Initializes Log and replays it if valid GUID found
+        self.Log = LogStream(self)
         if self.header.sLogGuid != bytes(16):
-            raise BaseException("Can't open the VHDX image: can't replay the Log (yet)!")
+            if '+' not in self.mode:
+                raise BaseException("Can't replay the Log in a read-only VHDX Image!")
+            self.Log.replay_log() # Success or fatal exception
+            # Set NULL Log GUID
+            self._update_headers(9)
         # Parses Region Table
         f.seek(192<<10)
         r = RegionTableHeader(f.read(65536), 192<<10, stream=f)
@@ -805,6 +763,9 @@ class Image(object):
         if op & 4:
             h.sLogGuid = uuid.uuid4().bytes_le
             self.updated_log_guid = 1
+        if op & 8:
+            h.sLogGuid = bytes(16)
+            self.updated_log_guid = 1
         f = self.stream
         f.seek(64<<10); f.write(h.pack())
         h.u64SequenceNumber += 1
@@ -828,7 +789,7 @@ class Image(object):
         self.stream.write(b'\x00')
         return blk_ea
 
-    def _is_block_in_any_parent(self, offset):
+    def has_block(self, offset):
         """Checks if a given virtual offset belongs to a payload block allocated
         in any parent of a VHDX chain (NOT to call in last child!)"""
         blk_i = offset//self.block # Absolute index
@@ -837,7 +798,7 @@ class Image(object):
         if blk_s != 0:
             return True
         if self.Parent:
-            return self.Parent._is_block_in_any_parent(offset)
+            return self.Parent.has_block(offset)
         return False
         
     def _offset_info(self, offset, what=0):
@@ -1024,7 +985,7 @@ class Image(object):
                 # associated with an allocated payload block
                 in_parent = False
                 if self.Parent:
-                    in_parent = self.Parent._is_block_in_any_parent(self._pos)
+                    in_parent = self.Parent.has_block(self._pos)
                 bmp_ea, bmp_s, sec_i, sec_bi = self._offset_info(self._pos, 1)
 
                 if not blk_s:

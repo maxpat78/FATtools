@@ -33,7 +33,7 @@ The most fragile area (and, thus, subject to bugs) was the caching mechanism, th
 Code is GPLed (look at GPL.TXT inside folder).
 
 
-[1] VHDX Log stream is not actually supported.
+[1] VHDX Log support is actually limited to replaying capability.
 
 
 
