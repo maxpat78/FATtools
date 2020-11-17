@@ -1052,7 +1052,7 @@ class FATDirentry(Direntry):
     layout = { # { offset: (name, unpack string) }
     0x00: ('sName', '8s'),
     0x08: ('sExt', '3s'),
-    0x0B: ('chDOSPerms', 'B'),
+    0x0B: ('chDOSPerms', 'B'), # bit: 0=R(ead only) 1=H(idden) 2=S(ystem) 3=Volume Label 4=D(irectory) 5=A(rchive)
     0x0C: ('chFlags', 'B'), # bit 3/4 set: lowercase basename/extension (NT)
     0x0D: ('chReserved', 'B'), # creation time fine resolution in 10 ms units, range 0-199
     0x0E: ('wCTime', '<H'),
@@ -1888,6 +1888,23 @@ class Dirtable(object):
         for subdir in dirs:
             for a,b,c in self.opendir(subdir).walk():
                 yield a, b, c
+
+    def attrib(self, name, perms=('-A',)):
+        "Changes the DOS permissions on a table entry. Accepts perms tuple [+-][AHRS]"
+        mask = {'R':0, 'H':1, 'S':2, 'A':5}
+        e = self.find(name)
+        if not e: return 0
+        for perm in perms:
+            if len(perm) < 2 or perm[0] not in ('+','-') or perm[1].upper() not in mask:
+                raise FATException("Bad permission string", perm)
+            if perm[0] == '-':
+                e.chDOSPerms &= ~(1 << mask[perm[1].upper()])
+            else:
+                e.chDOSPerms |= (1 << mask[perm[1].upper()])
+        if DEBUG&4: log("Updating permissions on '%s' with code=%X", name, e.chDOSPerms)
+        self.stream.seek(e._pos)
+        self.stream.write(e.pack())
+        return 1
 
 
          #############################

@@ -1295,6 +1295,23 @@ class Dirtable(object):
             for a,b,c in self.opendir(subdir).walk():
                 yield a, b, c
 
+    def attrib(self, name, perms=('-A',)):
+        "Changes the DOS permissions on a table entry. Accepts perms tuple [+-][AHRS]"
+        mask = {'R':0, 'H':1, 'S':2, 'A':5}
+        e = self.find(name)
+        if not e: return 0
+        for perm in perms:
+            if len(perm) < 2 or perm[0] not in ('+','-') or perm[1].upper() not in mask:
+                raise exFATException("Bad permission string", perm)
+            if perm[0] == '-':
+                e.wFileAttributes &= ~(1 << mask[perm[1].upper()])
+            else:
+                e.wFileAttributes |= (1 << mask[perm[1].upper()])
+        if DEBUG&4: log("Updating permissions on '%s' with code=%X", name, e.wFileAttributes)
+        self.stream.seek(e._pos)
+        self.stream.write(e.pack())
+        return 1
+
 
          #############################
         # HIGH LEVEL HELPER ROUTINES #
