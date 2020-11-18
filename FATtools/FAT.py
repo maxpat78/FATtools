@@ -1938,6 +1938,7 @@ class Dirtable(object):
         e._buf[:11] = bytes('%-11s' % name.upper(), 'ascii') # Label
         e._buf[22:26] = struct.pack('<I', e.GetDosDateTime(1)) # Creation time (CHKDSK)
         self.stream.seek(e._pos)
+        self.stream.write(e._buf)
         self._update_dirtable(e)
         return name
 
