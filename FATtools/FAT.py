@@ -1178,7 +1178,7 @@ class FATDirentry(Direntry):
         cdate = ((tm[0]-1980) << 9) | (tm[1] << 5) | (tm[2])
         ctime = (tm[3] << 11) | (tm[4] << 5) | (tm[5]//2)
         if format:
-            return ctime<<16 | cdate # DWORD
+            return cdate<<16 | ctime # DWORD
         else:
             return (cdate, ctime)
 
@@ -1905,6 +1905,42 @@ class Dirtable(object):
         self.stream.seek(e._pos)
         self.stream.write(e.pack())
         return 1
+
+    def label(self, name=None):
+        "Gets or sets volume label. Pass an empty string to clear."
+        if self.path != '.':
+            raise FATException("A volume label can be assigned in root directory only")
+        if name and len(name) > 11:
+            raise FATException("A volume label can't be longer than 11 characters")
+        if name and not FATDirentry.IsValidDosName(name):
+            raise FATException("Volume label contains invalid characters")
+
+        for e in self.iterator():
+            if e.IsLabel():
+                if name == None: # get mode
+                    return e.Name()
+                elif name == '':
+                    e._buf[0] = 0xE5 # cleared
+                else:
+                    e._buf[:11] = bytes('%-11s' % name.upper(), 'ascii')
+                # Writes new entry
+                self.stream.seek(e._pos)
+                self.stream.write(e._buf)
+                return name
+
+        if name == None: return
+        e = FATDirentry(bytearray(32))
+        e._pos = self.findfree(32)
+        if not e._pos:
+            if DEBUG&4: log("Can't alloc new slot for volume label")
+            return ''
+        e._buf[11] = 8 # Volume label attribute
+        e._buf[:11] = bytes('%-11s' % name.upper(), 'ascii') # Label
+        e._buf[22:26] = struct.pack('<I', e.GetDosDateTime(1)) # Creation time (CHKDSK)
+        self.stream.seek(e._pos)
+        self._update_dirtable(e)
+        return name
+
 
 
          #############################

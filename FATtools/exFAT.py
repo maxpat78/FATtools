@@ -678,7 +678,7 @@ class exFATDirentry(Direntry):
 
     def IsLabel(self, mark=0):
         "Get or set the slot's Label DOS permission"
-        return self.type == 0x03
+        return self.type == 3
 
     special_lfn_chars = '''"*/:<>?\|''' + ''.join([chr(c) for c in range(32)])
 
@@ -1311,6 +1311,41 @@ class Dirtable(object):
         self.stream.seek(e._pos)
         self.stream.write(e.pack())
         return 1
+
+    def label(self, name=None):
+        "Gets or sets volume label. Pass an empty string to clear."
+        if self.path != '.':
+            raise exFATException("A volume label can be assigned in root directory only")
+        if name and len(name) > 11:
+            raise exFATException("A volume label can't be longer than 11 characters")
+        if name and not exFATDirentry.IsValidDosName(name):
+            raise exFATException("Volume label contains invalid characters")
+
+        for e in self.iterator():
+            if e.IsLabel():
+                if name == None: # get mode
+                    return e.sVolumeLabel.decode('utf-16le')[:e.chCount]
+                elif name == '':
+                    e._buf[0] = 3 # cleared label
+                else:
+                    e._buf[0] = 0x83 # active label
+                    e._buf[1] = len(name) # label length (chars)
+                    e._buf[2:] = bytes('%s' % name, 'utf-16le')
+                # Writes new entry
+                self.stream.seek(e._pos)
+                self.stream.write(e._buf)
+                return name
+
+        if name == None: return
+        e = exFATDirentry(bytearray(32))
+        e._pos = self.findfree()
+        e._buf[0] = 0x83
+        e._buf[1] = len(name)
+        e._buf[2:] = bytes('%s' % name, 'utf-16le')
+        self.stream.seek(e._pos)
+        self.stream.write(e._buf)
+        self._update_dirtable(e)
+        return name
 
 
          #############################
