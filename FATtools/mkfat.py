@@ -41,10 +41,11 @@ def fat12_mkfs(stream, size, sector=512, params={}):
         fsinfo = {}
         cluster_size = (2**i)
         clusters = (size - reserved_size) // cluster_size
+        if clusters%2: clusters-=1 # get always an even number
         fat_size = ((12*(clusters+2))//8+sector-1)//sector * sector # 12-bit slot
         required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
         while required_size > size:
-            clusters -= 1
+            clusters -= 2
             fat_size = ((12*(clusters+2))//8+sector-1)//sector * sector # 12-bit slot
             required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
         if clusters > 4085:
@@ -97,7 +98,7 @@ def fat12_mkfs(stream, size, sector=512, params={}):
     boot = boot_fat16()
     boot.chJumpInstruction = b'\xEB\x58\x90' # JMP opcode is mandatory, or CHKDSK won't recognize filesystem!
     boot._buf[0x5A:0x5A+len(nodos_asm_5Ah)] = nodos_asm_5Ah # insert assembled boot code
-    boot.chOemID = b'%-8s' % b'NODOS'
+    boot.chOemID = b'%-8s' % b'MSDOS5.0' # makes some old DOS apps more happy
     boot.wBytesPerSector = sector
     boot.wSectorsCount = 1
     boot.dwHiddenSectors = 0
@@ -191,10 +192,11 @@ def fat16_mkfs(stream, size, sector=512, params={}):
         fsinfo = {}
         cluster_size = (2**i)
         clusters = (size - reserved_size) // cluster_size
+        if clusters%2: clusters-=1 # get always an even number
         fat_size = (2*(clusters+2)+sector-1)//sector * sector
         required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
         while required_size > size:
-            clusters -= 1
+            clusters -= 2
             fat_size = (2*(clusters+2)+sector-1)//sector * sector
             required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
         # Should switch to FAT12?
@@ -254,7 +256,7 @@ def fat16_mkfs(stream, size, sector=512, params={}):
     boot = boot_fat16()
     boot.chJumpInstruction = b'\xEB\x58\x90' # JMP opcode is mandatory, or CHKDSK won't recognize filesystem!
     boot._buf[0x5A:0x5A+len(nodos_asm_5Ah)] = nodos_asm_5Ah # insert assembled boot code
-    boot.chOemID = b'%-8s' % b'NODOS'
+    boot.chOemID = b'%-8s' % b'MSDOS5.0' # makes some old DOS apps more happy
     boot.wBytesPerSector = sector
     boot.wSectorsCount = (reserved_size - fsinfo['root_entries']*32)//sector
     boot.dwHiddenSectors = 1
@@ -274,7 +276,7 @@ def fat16_mkfs(stream, size, sector=512, params={}):
     boot.uchSignature = 0x29
     boot.wBootSignature = 0xAA55
     boot.wSectorsPerTrack = 63 # not used w/o disk geometry!
-    boot.wHeads = 16 # not used
+    boot.wHeads = partutils.size2chs(size)[1] # not used with LBA
 
     boot.pack()
     #~ print boot
@@ -353,10 +355,11 @@ def fat32_mkfs(stream, size, sector=512, params={}):
         fsinfo = {}
         cluster_size = (2**i)
         clusters = (size - reserved_size) // cluster_size
+        if clusters%2: clusters-=1 # get always an even number
         fat_size = (4*(clusters+2)+sector-1)//sector * sector
         required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
         while required_size > size:
-            clusters -= 1
+            clusters -= 2
             fat_size = (4*(clusters+2)+sector-1)//sector * sector
             required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
         if (clusters < 65526 and not params.get('fat32_allows_few_clusters')) or clusters > 0x0FFFFFF6: # MS imposed limits
@@ -420,10 +423,11 @@ def fat32_mkfs(stream, size, sector=512, params={}):
     boot = boot_fat32()
     boot.chJumpInstruction = b'\xEB\x58\x90' # JMP opcode is mandatory, or CHKDSK won't recognize filesystem!
     boot._buf[0x5A:0x5A+len(nodos_asm_5Ah)] = nodos_asm_5Ah # insert assembled boot code
-    boot.chOemID = b'%-8s' % b'NODOS'
+    boot.chOemID = b'%-8s' % b'MSWIN4.1' # this makes MS-DOS 7 Scandisk happy
     boot.wBytesPerSector = sector
     boot.wSectorsCount = reserved_size//sector
-    boot.wHiddenSectors = 1
+    #~ boot.wHiddenSectors = 1
+    boot.wHiddenSectors = 0x3f # 63 for standard DOS part
     boot.uchSectorsPerCluster = fsinfo['cluster_size']//sector
     boot.uchFATCopies = fat_copies
     boot.uchMediaDescriptor = 0xF8
@@ -443,7 +447,7 @@ def fat32_mkfs(stream, size, sector=512, params={}):
     boot.chExtBootSignature = 0x29
     boot.wBootSignature = 0xAA55
     boot.wSectorsPerTrack = 63 # not used w/o disk geometry!
-    boot.wHeads = 16 # not used
+    boot.wHeads = partutils.size2chs(size,1)[1] # not used with LBA
 
     fsi = fat32_fsinfo(offset=sector)
     fsi.sSignature1 = b'RRaA'

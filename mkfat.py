@@ -11,7 +11,7 @@ help_s = """
 par = optparse.OptionParser(usage=help_s, version="%prog 1.0", description="Applies a FAT12/16/32 or exFAT File System to a disk device or file image.")
 par.add_option("-t", "--fstype", dest="fs_type", help="try to apply the specified File System between FAT12, FAT16, FAT32 or EXFAT. Default: based on medium size.", metavar="FSTYPE", type="string")
 par.add_option("-c", "--cluster", dest="cluster_size", help="force a specified cluster size between 512, 1024, 2048, 4096, 8192, 16384, 32768 (since MS-DOS) or 65536 bytes (Windows NT+) for FAT. exFAT permits up to 32M. Default: based on medium size. Accepts 'k' and 'm' postfix for Kibibytes and Mebibytes.", metavar="CLUSTER")
-par.add_option("-p", "--partition", dest="part_type", help="create a single MBR or GPT partition from all disk space before formatting", metavar="PARTTYPE", type="string")
+par.add_option("-p", "--partition", dest="part_type", help="create a single partition from all disk space before formatting. Accepts MBR, GPT or MBR_OLD (2 GB max, MS-DOS <7.1 compatible)", metavar="PARTTYPE", type="string")
 opts, args = par.parse_args()
 
 if not args:
@@ -27,19 +27,31 @@ if dsk == 'EINV':
 # Windows 10 Shell happily auto-mounts a VHD ONLY IF partitioned and formatted
 if opts.part_type:
     t = opts.part_type.lower()
-    if t not in ('mbr', 'gpt'):
-        print('You must specify MBR or GPT to auto partition disk space!')
+    if t not in ('mbr', 'mbr_old', 'gpt'):
+        print('You must specify MBR, MBR_OLD or GPT to auto partition disk space!')
         sys.exit(1)
     print("Creating a %s partition with all disk space..."%t)
-    if t=='mbr':
+    if t in ('mbr', 'mbr_old'):
         if dsk.size > (2<<40): 
             print('You must specify GPT partition scheme with disks >2TB!')
             sys.exit(1)
-        partutils.partition(dsk, 'mbr', mbr_type=0xC)
+        if t == 'mbr_old':
+            mbrtyp = 6
+            if dsk.size < 32<<20:
+                mbrtyp = 4
+            if opts.fs_type and opts.fs_type.lower() == 'fat32':
+                mbrtyp = 0xB
+            partutils.partition(dsk, 'mbr', mbr_type=mbrtyp)
+        else: # MS-DOS >7.0
+            partutils.partition(dsk, 'mbr', mbr_type=0xC)
     else:
         partutils.partition(dsk)
     dsk.close()
     dsk = vopen(args[0], 'r+b', 'partition0')
+    if type(dsk) == type(''):
+        print("mkfat error opening new partition:", dsk)
+        sys.exit(1)
+        
 
 params = {}
 

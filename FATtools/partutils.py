@@ -1,30 +1,31 @@
 # -*- coding: cp1252 -*-
 """
-La numerazione CHS (Cylinder, Head, Sector) 24-bit inizia dal settore 1.
-I tre byte nell'ordine:
+Old CHS (Cylinder, Head, Sector) 24-bit sector numbering starts from sector 1.
+The 3 bytes contain:
 
-        H (8 bit)     S (6 bit)   C (8+2 bit)
+        H (8 bits)     S (6 bits)   C (8+2 bits)
         |             |           |
     HHHHHHHH -+- CC SSSSSS -+- CCCCCCCC
 
-e, quindi, i valori massimi sono: C=1024 (0-1023), H=255 (0-254), S=63 (1-63).
+so that max values are: C=1024 (0-1023), H=256 (0-255), S=63 (1-63).
 
-Il limite per il BIOS è (1024,16,63) o 1.032.192 settori per le vecchie
-versioni, pari a 504 MiB con settori da 512 byte.
-Per i nuovi BIOS (1024,255,63) o 16.450.560 settori, pari a 8.032 MiB.
-Si noti che a causa di un bug nel DOS si sfruttano solo 255 Heads.
+The old BIOS limit is (1024,16,63) or 1.032.192 x 512 byte sectors or 504 MiB.
 
-MS-DOS 6.22/7 rileva 8025 MiB su 10 GiB e permette una partizione primaria di
-2047 MiB e una estesa di 5977, divisibile in unità logiche da 2047 MiB.
+New BIOSes permit (1024,256,63) or 16.515.072 sectors or 8.064 MiB: but a DOS
+bug limits heads to 255 (16.450.560 sectors or 8.032,5 MiB).
 
-MS-DOS 7.1 (Windows 95 OSR2) rileva 10 GiB e può creare una partizione
-primaria FAT32-LBA (tipo 0x0C) assegnando tutto lo spazio.
-Il limite di LBA è 2^32 settori o 2 TiB.
+MS-DOS 6.22/7.0 detect 8025 MiB on a 10 GiB raw disk and allow a 2047 MiB 
+primary partition plus a 5977 MiB extended one (which can be splitted in
+logical partitions up to 2047 MiB each).
 
-Se il settore finale LBA non è rappresentabile in CHS si usa la terna
-(1023, 254, 63) o FE FF FF.
-GPT adotta nel MBR di protezione la terna (1023, 255, 63) o FF FF FF e il
-tipo di partizione 0xEE."""
+MS-DOS 7.1 (Windows 95 OSR2) detects all 10 GiB and can set up a FAT32-LBA
+primary partition (type 0x0C) with all the space.
+LBA is limited to 2^32 sectors or 2 TiB.
+
+If the last LBA sector has no CHS representation, the triple (1023, 254, 63)
+or FE FF FF is used.
+GPT partitions use a protective MBR with the triple (1023, 255, 63) or
+FF FF FF and a partition type of 0xEE."""
 
 import struct
 from FATtools import utils
@@ -48,14 +49,14 @@ def chs2lba(c, h, s, max_hpc=16, max_spc=63):
 	return (c*max_hpc+h)*max_spc + (s-1)
 
 def lba2chs(lba, hpc=0):
-	spc = 63
-	if not hpc:
-		for hpc in (16,32,64,128,255):
-			if lba <= spc*hpc: break
-	c = lba//(hpc*spc)
-	h = (lba//spc)%hpc
-	s = (lba%spc)+1
-	return c, h, s
+    spc = 63
+    if not hpc:
+        for hpc in (16,32,64,128,255):
+            if lba <= spc*hpc: break
+    c = lba//(hpc*spc)
+    h = (lba//spc)%hpc
+    s = (lba%spc)+1
+    return c, h, s
 
 def size2chs(n, getgeometry=0):
     lba = n//512
@@ -67,8 +68,8 @@ def size2chs(n, getgeometry=0):
         return c,h,s
     else:
         # partition that fits in the given space
-        # full number of cylinders, HPC and SPT to use
-        return c-1, hpc, 63
+        # full number of cylinders, heads per cyl and sectors per track to use
+        return c+1, hpc, 63
     
 def chs2raw(t):
     "A partire da una tupla (C,H,S) calcola i 3 byte nell'ordine registrato nel Master Boot Record"
@@ -83,15 +84,19 @@ def chs2raw(t):
 def raw2chs(t):
     "Converte i 24 bit della struttura CHS nel MBR in tupla"
     h,s,c = t[0], t[1], t[2]
-    return ((s & 192) << 2) | c, h, s & 63
+    return ((s  & 192) << 2) | c, h, s & 63
 
 def mkpart(offset, size, hpc=16):
-    c, h, s = size2chs(size, 1)
-    #~ print "Rounded CHS for %.02f MiB is %d-%d-%d (%.02f MiB)" % (size//(1<<20), c,h,s, 512*c*h*s//(1<<20))
+    c, h, s = size2chs(size-1, 1)
+    orig_size = size
     size = 512*c*h*s # adjust size
+    if size > orig_size:
+        c -= 1
+        size = 512*c*h*s # re-adjust size
+    #~ print ("Rounded CHS for %.02f MiB is %d-%d-%d (%.02f MiB)" % (orig_size/(1<<20), c,h,s, size/(1<<20)))
     dwFirstSectorLBA = offset//512
     sFirstSectorCHS = lba2chs(dwFirstSectorLBA, hpc)
-    dwTotalSectors = (size//512)
+    dwTotalSectors = ((size-offset)//512)
     sLastSectorCHS = lba2chs(dwFirstSectorLBA+dwTotalSectors-1, hpc)
     return dwFirstSectorLBA, dwTotalSectors, sFirstSectorCHS,sLastSectorCHS
 
@@ -102,7 +107,7 @@ class MBR_Partition(object):
     layout = { # { offset: (name, unpack string) }
     0x1BE: ('bStatus', 'B'), # 80h=bootable, 00h=not bootable, other=invalid
     0x1BF: ('sFirstSectorCHS', '3s'), # absolute (=disk relative) CHS address of 1st partition sector
-    0x1C2: ('bType', 'B'), # partition type: 7=NTFS, exFAT; C=FAT32 LBA; E=FAT16 LBA; F=Extended LBA; EE=GPT
+    0x1C2: ('bType', 'B'), # partition type
     0x1C3: ('sLastSectorCHS', '3s'), # CHS address of last sector (or, if >8GB, FE FF FF [FF FF FF if GPT])
     0x1C6: ('dwFirstSectorLBA', '<I'), # LBA address of 1st sector
     # dwFirstSectorLBA in MBR/EBR 1st entry (logical partition) is relative to such partition start (typically 63 sectors);
@@ -254,20 +259,26 @@ mbr_types = {
 
 def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
     "Makes a single partition with all disk space"
-
     disk.seek(0)
     if fmt == 'mbr':
         if DEBUG&1: log("Making a MBR primary partition, type %X: %s", mbr_type, mbr_types[mbr_type])
         mbr = MBR(None, disksize=disk.size)
         # Partitions are track-aligned (i.e., 32K-aligned) in old MS-DOS scheme
         # They are 1 MB-aligned since Windows Vista
-        # We reserve 33 sectors at end, to allow later GPT conversion
+        # We can reserve 33 sectors at end, to allow later GPT conversion
         if mbr_type in (0xC, 0xE):
             mbr.setpart(0, 1<<20, disk.size - ((1<<20)+33*512))
+        elif mbr_type in (0x4, 0x6, 0xB):
+            # MS-DOS < 7.1 has 2 GB limit
+            if mbr_type < 0xB:
+                size = min(disk.size, 520*128*63*512)
+            else:
+                size = disk.size
+            if DEBUG&1: log("Adjusted part size for MS-DOS pre 7.1: %d", size)
+            mbr.setpart(0, 63*512, size - 63*512)
         else:
             mbr.setpart(0, 63*512, disk.size - 97*512)
-        if mbr_type in (0xC, 0xE): # else auto determinated
-            mbr.partitions[0].bType = mbr_type
+        mbr.partitions[0].bType = mbr_type # overwrites setpart guess
         disk.write(mbr.pack())
         disk.close()
         return mbr

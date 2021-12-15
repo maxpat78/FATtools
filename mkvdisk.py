@@ -44,6 +44,10 @@ if u in ('k','m','g','t'):
 else:
     fssize = int(opts.image_size)
 
+if os.path.exists(args[0]) and not opts.force:
+    print("mkvdisk error: disk image already exists, use -f to force overwriting")
+    sys.exit(1)
+
 s = args[0].lower()
 if not s.endswith('.vhd') and not s.endswith('.vhdx') and not s.endswith('.vdi') and not s.endswith('.vmdk'):
     print("Creating RAW disk image '%s'... "%args[0], end='')
