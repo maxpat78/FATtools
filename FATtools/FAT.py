@@ -1930,11 +1930,8 @@ class Dirtable(object):
 
         if name == None: return
         e = FATDirentry(bytearray(32))
-        e._pos = self.findfree(32)
-        if not e._pos:
-            if DEBUG&4: log("Can't alloc new slot for volume label")
-            return ''
-        e._buf[11] = 8 # Volume label attribute
+        e._pos = self.findfree(32) # raises or returns!
+        e._buf[11] = 0x28 # Volume label attribute
         e._buf[:11] = bytes('%-11s' % name.upper(), 'ascii') # Label
         e._buf[22:26] = struct.pack('<I', e.GetDosDateTime(1)) # Creation time (CHKDSK)
         self.stream.seek(e._pos)
