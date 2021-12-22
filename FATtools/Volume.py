@@ -179,7 +179,8 @@ def openvolume(part):
 
 
 def _preserve_attributes_in(attributes, st, target_dir, dst):
-    if attributes: # bit mask: 1=preserve creation time, 2=last modification, 3=last access
+    if attributes: # bit mask: 0=preserve creation time, 1=last modification, 2=last access
+        # 5=zero last modification & access times (MS-DOS <7)
         if attributes & 1:
             tm = time.localtime(st.st_ctime)
             if target_dir.fat.exfat:
@@ -209,6 +210,12 @@ def _preserve_attributes_in(attributes, st, target_dir, dst):
             else:
                 dst.Entry.wADate = FAT.FATDirentry.MakeDosDate((tm.tm_year, tm.tm_mon, tm.tm_mday))
                 #~ dst.Entry.wATime = FAT.FATDirentry.MakeDosTime((tm.tm_hour, tm.tm_min, tm.tm_sec)) # FAT does not support this!
+
+        if attributes & 32:
+            if not target_dir.fat.exfat:
+                dst.Entry.wADate = 0
+                dst.Entry.wCDate = 0
+                dst.Entry.wCTime = 0
 
 def _preserve_attributes_out(attributes, base, fpi, dst):
             if attributes: # bit mask: 1=preserve creation time, 2=last modification, 3=last access
