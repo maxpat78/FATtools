@@ -55,9 +55,10 @@ class win32_disk(object):
         self._pos = 0
 
     def close(self):
-        windll.kernel32.CloseHandle(self.handle)
-        self.closed = True
-        del win32_disk.open_handles[self.name]
+        if self.name in win32_disk.open_handles:
+            windll.kernel32.CloseHandle(self.handle)
+            self.closed = True
+            del win32_disk.open_handles[self.name]
         
     def seek(self, offset, whence=0):
         if whence == 1:
