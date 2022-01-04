@@ -260,6 +260,8 @@ mbr_types = {
 def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
     "Makes a single partition with all disk space"
     disk.seek(0)
+    disk.write((2<<20)*b'\x00') # clean partition table and, hopefully, FS structures
+    disk.seek(0)
     if fmt == 'mbr':
         if DEBUG&1: log("Making a MBR primary partition, type %X: %s", mbr_type, mbr_types[mbr_type])
         mbr = MBR(None, disksize=disk.size)

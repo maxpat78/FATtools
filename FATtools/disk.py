@@ -56,6 +56,7 @@ class win32_disk(object):
 
     def close(self):
         if self.name in win32_disk.open_handles:
+            windll.kernel32.FlushFileBuffers(self.handle)
             windll.kernel32.CloseHandle(self.handle)
             self.closed = True
             del win32_disk.open_handles[self.name]
