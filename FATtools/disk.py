@@ -4,6 +4,7 @@ from ctypes import *
 
 if os.name == 'nt':
     from ctypes.wintypes import *
+    from FATtools.win32enumvols import dismount_all
 
 from FATtools.debug import log
 from FATtools.utils import myfile
@@ -22,6 +23,10 @@ class win32_disk(object):
 
     def __init__(self, name, mode='rb', buffering=0):
         status = c_int(0)
+        name = name.lower()
+        # First try to unmount volumes belonging to a given \\.\PhysicalDriveN
+        if 'physicaldrive' in name and mode != 'rb':
+            dismount_all(bytes(name,'ascii'))
         # Open a new write handle
         if name in win32_disk.open_handles:
             handle = win32_disk.open_handles[name]
@@ -53,12 +58,11 @@ class win32_disk(object):
         self.mode = mode
         if DEBUG&1: log("Successfully opened HANDLE to Win32 Disk %s (size %d MB) for exclusive access", name, self.size//(1<<20))
         self._pos = 0
-
+        
     def close(self):
+        self.closed = True
         if self.name in win32_disk.open_handles:
-            windll.kernel32.FlushFileBuffers(self.handle)
             windll.kernel32.CloseHandle(self.handle)
-            self.closed = True
             del win32_disk.open_handles[self.name]
         
     def seek(self, offset, whence=0):

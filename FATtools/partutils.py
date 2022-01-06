@@ -260,8 +260,6 @@ mbr_types = {
 def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
     "Makes a single partition with all disk space"
     disk.seek(0)
-    disk.write((2<<20)*b'\x00') # clean partition table and, hopefully, FS structures
-    disk.seek(0)
     if fmt == 'mbr':
         if DEBUG&1: log("Making a MBR primary partition, type %X: %s", mbr_type, mbr_types[mbr_type])
         mbr = MBR(None, disksize=disk.size)
@@ -281,7 +279,16 @@ def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
         else:
             mbr.setpart(0, 63*512, disk.size - 97*512)
         mbr.partitions[0].bType = mbr_type # overwrites setpart guess
+        # Remove any previous GPT structure
+        disk.write(32768*b'\x00')
+        disk.seek(0)
         disk.write(mbr.pack())
+        # Blank partition 1st sector (and any old boot sector)
+        disk.seek(mbr.partitions[0].dwFirstSectorLBA*512)
+        disk.write(512*b'\x00')
+        # Blank any backup GPT header (and avoid pain to Windows disk changer?)
+        disk.seek(disk.size-512)
+        disk.write(512*b'\x00')
         disk.close()
         return mbr
 
@@ -314,6 +321,10 @@ def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
     disk.write(gpt.pack())
     disk.seek(gpt.u64PartitionEntryLBA*512)
     disk.write(gpt.raw_partitions)
+
+    # Blank partition 1st sector
+    disk.seek(gpt.partitions[0].u64StartingLBA*512)
+    disk.write(512*b'\x00') # clean old boot sector, if present
 
     if DEBUG&1: log("Writing backup of Partition Array and GPT Header at disk end")
     disk.seek((gpt.u64LastUsableLBA+1)*512)

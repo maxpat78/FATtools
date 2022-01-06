@@ -30,7 +30,7 @@ if opts.part_type:
     if t not in ('mbr', 'mbr_old', 'gpt'):
         print('You must specify MBR, MBR_OLD or GPT to auto partition disk space!')
         sys.exit(1)
-    print("Creating a %s partition with all disk space..."%t)
+    print("Creating a %s partition with all disk space..."%t.upper())
     if t in ('mbr', 'mbr_old'):
         if dsk.size > (2<<40): 
             print('You must specify GPT partition scheme with disks >2TB!')
@@ -51,6 +51,8 @@ if opts.part_type:
     if type(dsk) == type(''):
         print("mkfat error opening new partition:", dsk)
         sys.exit(1)
+    else:
+        print("Disk was correctly partitioned with %s scheme."%t.upper())
         
 
 params = {}
