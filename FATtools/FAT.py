@@ -1207,7 +1207,10 @@ class FATDirentry(Direntry):
         if DEBUG&4: log("GetShortName got %s:%d",shortname,chFlags)
         if type(shortname) != str:
             #~ shortname = shortname.decode()
-            shortname = shortname.decode('ansi') # fix b'XXXXXX~1\xfaTH'
+            if os.name == 'nt':
+                shortname = shortname.decode('ansi') # fix b'XXXXXX~1\xfaTH'
+            else:
+                shortname = shortname.decode('cp437')
         name = shortname[:8].rstrip()
         if chFlags & 0x8: name = name.lower()
         ext = shortname[8:].rstrip()

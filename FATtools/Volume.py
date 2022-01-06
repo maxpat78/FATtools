@@ -4,6 +4,7 @@
 # High-level functions to open disks, partitions, volumes and play with them easily.
 #
 #
+from io import BytesIO
 import os, time, sys, re, glob, fnmatch
 from FATtools import disk, utils, FAT, exFAT, partutils
 from FATtools import vhdutils, vhdxutils, vdiutils, vmdkutils
@@ -19,7 +20,9 @@ def vopen(path, mode='rb', what='auto'):
     'partitionN' tries to open partition number N; 'volume' tries to open a file
     system. """
     if DEBUG&2: log("vopen in '%s' mode", what)
-    if type(path) in (disk.disk, vhdutils.Image, vdiutils.Image, vmdkutils.Image):
+    if isinstance(path, BytesIO):
+        d = disk.disk(path, 'ramdisk') # disk or disk image
+    elif type(path) in (disk.disk, vhdutils.Image, vdiutils.Image, vmdkutils.Image):
         if path.mode == mode:
             d = path
         else:
@@ -351,21 +354,24 @@ def copy_out(base, src_list, dest, callback=None, attributes=None, chunk_size=1<
             copy_tree_out(fpi, os.path.join(dest,it), callback, attributes, chunk_size)
             continue
         it = os.path.basename(it) # we want only file/dir name in target!
-        if os.path.isdir(dest):
-            dst = os.path.join(dest, it)
+        if isinstance(dest, BytesIO):
+            dst.write
         else:
-            if len(src_list) == 1:
-                dst = dest
+            if os.path.isdir(dest):
+                dst = os.path.join(dest, it)
             else:
-                raise FileNotFoundError("Can't copy in '%s', target is not a directory!"%dest)
-        fpo = open(dst, 'wb')
-        if DEBUG&2: log("copy_out: target is '%s'", dst)
-        if callback: callback(dst)
-        while True:
-            s = fpi.read(chunk_size)
-            if not s: break
-            fpo.write(s)
-        fpo.close()
+                if len(src_list) == 1:
+                    dst = dest
+                else:
+                    raise FileNotFoundError("Can't copy in '%s', target is not a directory!"%dest)
+            fpo = open(dst, 'wb')
+            if DEBUG&2: log("copy_out: target is '%s'", dst)
+            if callback: callback(dst)
+            while True:
+                s = fpi.read(chunk_size)
+                if not s: break
+                fpo.write(s)
+            fpo.close()
         fpi.close()
         _preserve_attributes_out(attributes, base, fpi, dst)
 

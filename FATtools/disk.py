@@ -140,7 +140,10 @@ class disk(object):
         self.cache_dirties = {} # dirty sectors
         self.cache_table = {} # { sector: cache offset }
         self.cache_tableR = {} # reversed: { cache offset:sector }
-        if os.name == 'nt' and '\\\\.\\' in name:
+        if mode == 'ramdisk':
+            self._file = name
+            self.size = name.getbuffer().nbytes
+        elif os.name == 'nt' and '\\\\.\\' in name:
             self._file = win32_disk(name, mode, buffering)
             self.size = self._file.size
         else:
