@@ -62,15 +62,14 @@ def enum_nt_volumes():
         n = get_phys_drive_num(v1)
         if n != -1:
             k = b'\\\\.\\physicaldrive%d'%n
-            if k not in volumes:
-                    volumes[k] = []
+            if k not in volumes: volumes[k] = []
             volumes[b'\\\\.\\physicaldrive%d'%n] += [v1]
         p = get_volume_paths(v)
         if p:
             paths[v1] = p
     s = create_string_buffer(256)
     hffv = windll.kernel32.FindFirstVolumeA(s, 256)
-    if hffv == -1: return
+    if hffv == -1: return None, None
     couple(s.value)
     while windll.kernel32.FindNextVolumeA(hffv, s, 256) != 0:
         couple(s.value)
@@ -80,6 +79,9 @@ def enum_nt_volumes():
 def dismount_all(device):
     "Dismounts all children volumes mounted on a device, allowing writes everywhere on it"
     volumes, paths = enum_nt_volumes()
+    if not volumes:
+        if DEBUG&1: log('enum_nt_volumes did not find volumes to dismount!')
+        return
     if DEBUG&1: log('enum_nt_volumes\n  volumes: %s\n  paths: %s', volumes, paths)
     #~ print (device, volumes, paths)
     if device in volumes:
