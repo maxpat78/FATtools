@@ -118,7 +118,7 @@ def ls(args, opts):
 
 
 if __name__ == '__main__':
-    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale()[0])
+    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale())
     
     help_s = """
     ls.py [-b -r -s NSDE-!] image.<vhd|vhdx|vdi|vmdk|img|bin|raw|dsk>[/path] ...
