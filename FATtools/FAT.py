@@ -1839,7 +1839,9 @@ class Dirtable(object):
             d[n] = e
             names+=[n]
         if by_func:
-            names.sort(key=functools.cmp_to_key(by_func))
+            names.sort(key=functools.cmp_to_key(by_func)) # user order
+        else:
+            names = sorted(names) # default sorting
         if self.path == '.':
             self.stream.seek(0)
         else:
