@@ -1251,6 +1251,8 @@ class Dirtable(object):
         #~ names.sort(key=by_func)
         if by_func:
             names.sort(by_func)
+        else:
+            names = sorted(names)
         self.stream.seek(0)
         for name in names:
             self.stream.write(d[name]._buf) # re-writes ordered slots
