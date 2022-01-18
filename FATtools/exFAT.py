@@ -1254,7 +1254,10 @@ class Dirtable(object):
         else:
             names = sorted(names)
         self.stream.seek(0)
+        if self.path == '.':
+            self.stream.seek(96) # bypass special entries in root
         for name in names:
+            if not name: continue
             self.stream.write(d[name]._buf) # re-writes ordered slots
         last = self.stream.tell()
         unused = self.stream.size - last
