@@ -7,6 +7,7 @@ Born to re-sort directory entries in a FAT32 root table to cope with some hardwa
 
 It is able to open disk partitioned with both MBR or GPT and to help in partitioning.
 It can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images.
+It can handle RAW disk images and BytesIO "RamDisk" images, also.
 
 Actually, following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not regularly tested):
 - sector aligned read/writes with both file images and real disks
@@ -148,11 +149,11 @@ print('Formatting...')
 exfat_mkfs(o, o.size)
 vclose(o) # auto-close partition AND disk
 
-# Reopen FS and play
+# Reopen FS and write
 print('Writing...')
 o = vopen('\\\\.\\PhysicalDrive1', 'r+b')
 
-# Write some files with Python and sort them
+# Write some files with FATtools and sort them
 T = ('c','a','b','d')
 for t in T:
    f = o.create(t+'.txt')

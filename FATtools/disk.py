@@ -1,5 +1,6 @@
 # -*- coding: cp1252 -*-
 import io, os, sys, atexit
+from io import BytesIO
 from ctypes import *
 
 if os.name == 'nt':
@@ -143,7 +144,13 @@ class disk(object):
         self.cache_dirties = {} # dirty sectors
         self.cache_table = {} # { sector: cache offset }
         self.cache_tableR = {} # reversed: { cache offset:sector }
-        if os.name == 'nt' and '\\\\.\\' in name:
+        if mode == 'ramdisk':
+            if not isinstance(name, BytesIO):
+                raise BaseException('Ramdisk can be built from BytesIO only, not from ', type(name))
+            self._file = name
+            self.size = name.getbuffer().nbytes
+            self.mode = 'r+b'
+        elif os.name == 'nt' and '\\\\.\\' in name:
             self._file = win32_disk(name, mode, buffering)
             self.size = self._file.size
         else:
@@ -155,7 +162,8 @@ class disk(object):
         "Flush internal disk cache and close its handle"
         self.cache_flush()
         atexit.unregister(self.cache_flush)
-        self._file.close()
+        if not isinstance(self._file, BytesIO): # closing BytesIO == KILL DATA!
+            self._file.close()
 
     def seek(self, offset, whence=0):
         if whence == 1:

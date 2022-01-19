@@ -5,6 +5,7 @@
 #
 #
 import os, time, sys, re, glob, fnmatch
+from io import BytesIO
 from FATtools import disk, utils, FAT, exFAT, partutils
 from FATtools import vhdutils, vhdxutils, vdiutils, vmdkutils
 
@@ -19,11 +20,14 @@ def vopen(path, mode='rb', what='auto'):
     'partitionN' tries to open partition number N; 'volume' tries to open a file
     system. """
     if DEBUG&2: log("vopen in '%s' mode", what)
-    if type(path) in (disk.disk, vhdutils.Image, vhdxutils.Image, vdiutils.Image, vmdkutils.Image):
-        if path.mode == mode:
-            d = path
+    if type(path) in (disk.disk, vhdutils.Image, vhdxutils.Image, vdiutils.Image, vmdkutils.Image, BytesIO):
+        if isinstance(path, BytesIO):
+            d = disk.disk(path, 'ramdisk')
         else:
-            d = type(path)(path.name, mode) # reopens with right mode
+            if path.mode == mode:
+                d = path
+            else:
+                d = type(path)(path.name, mode) # reopens with right mode
     else:
         # Tries to open a raw disk or disk image
         if os.name =='nt' and len(path)==2 and path[1] == ':':
