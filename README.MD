@@ -79,7 +79,7 @@ gpt = partutils.partition(disk)
 ```
 from FATtools import mkfat, Volume
 part = Volume.vopen('MyDiskImage.img', 'r+b', 'partition0')
-mkfat.exfat_mkfs(part, (gpt.partitions[0].u64EndingLBA-gpt.partitions[0].u64StartingLBA+1)*512)
+mkfat.exfat_mkfs(part, part.size)
 ```
 
 - to order root directory table in USB drive X:
