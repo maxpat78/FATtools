@@ -15,7 +15,7 @@ DEBUG = 0
 
 
 class win32_disk(object):
-    "Handles a Win32 disk"
+    "Handles a Win32 disk. PLEASE NOTE: due to locking mechanism, the Win32 HANDLE is here UNIQUE - closing once, closes it everywhere."
     open_handles = {}
 
     def __str__ (self):
@@ -118,11 +118,10 @@ class win32_disk(object):
 
 
 class disk(object):
-    """Access a Windows NT+ disk like a regular file. It works with plain files, too.
-    PLEASE NOTE THAT: 1) read, write and seek MUST be aligned at sector (512 bytes) offsets
-    2) seek from disk's end does not work; 3) seek past disk's end followed by a read
-    returns no error."""
-
+    """Let a device or file act in a manner similar to a Python file object. Please
+    note that under Windows: 1) read, write and seek MUST be sector aligned (512
+    bytes offsets); 2) seek FROM disk's end does not work; 3) seek PAST disk's
+    end followed by read returns no error."""
     def __str__ (self):
         return "Python disk '%s' (mode '%s') @%016Xh" % (self._file.name, self.mode, self.pos)
 
@@ -153,7 +152,9 @@ class disk(object):
         atexit.register(self.cache_flush)
 
     def close(self):
+        "Flush internal disk cache and close its handle"
         self.cache_flush()
+        atexit.unregister(self.cache_flush)
         self._file.close()
 
     def seek(self, offset, whence=0):
@@ -362,6 +363,7 @@ class partition(object):
     def __init__(self, disk, offset, size):
         assert size != 0
         self.disk = disk
+        self.volume = None # contained file system, if opened
         self.closed = False
         self.mode = disk.mode
         self.offset = offset # partition offset
@@ -370,7 +372,6 @@ class partition(object):
         self.seek(0) # force disk to partition start
 
     def close(self):
-        self.disk.close()
         self.closed = True
 
     def seek(self, offset, whence=0):
@@ -396,6 +397,8 @@ class partition(object):
         self.disk.write(s)
 
     def flush(self):
+        if self.volume:
+            self.volume.flush() # propagates flush to opened file system
         self.disk.flush()
 
 

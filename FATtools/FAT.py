@@ -1344,6 +1344,7 @@ class FATDirentry(Direntry):
 class Dirtable(object):
     "Manages a FAT12/16/32 directory table"
     def __init__(self, boot, fat, startcluster, size=0, path='.'):
+        self.parent = None # parent device/partition container of root FS
         if type(boot) == HandleType:
             self.handle = boot # It's a directory handle
             self.boot = self.handle.File.boot
@@ -1375,11 +1376,16 @@ class Dirtable(object):
         #~ if DEBUG&4: log("Global directory table is '%s':", self.dirtable)
         self.map_slots()
         self.filetable = self.dirtable[startcluster]['Open']
+        self.closed = False
 
     def __str__ (self):
         s = "Directory table @LCN %X (LBA %Xh)" % (self.start, self.boot.cl2offset(self.start))
         return s
         
+    def _checkopen(self):
+        if self.closed:
+            raise FATException('Requested operation on a closed Dirtable!')
+
     def getdiskspace(self):
         "Returns the disk free space in a tuple (clusters, bytes)"
         free_bytes = self.fat.free_clusters * self.boot.cluster
@@ -1387,6 +1393,7 @@ class Dirtable(object):
 
     def open(self, name):
         "Opens the chain corresponding to an existing file name"
+        self._checkopen()
         res = Handle()
         if type(name) != DirentryType:
             root, fname = os.path.split(name)
@@ -1416,6 +1423,7 @@ class Dirtable(object):
     def opendir(self, name):
         """Opens an existing relative directory path beginning in this table and
         return a new Dirtable object or None if not found"""
+        self._checkopen()
         name = name.replace('/','\\')
         path = name.split('\\')
         found = self
@@ -1542,6 +1550,7 @@ class Dirtable(object):
 
     def rmtree(self, name=None):
         "Removes a full directory tree"
+        self._checkopen()
         if name:
             if DEBUG&4: log("rmtree:opening %s", name)
             target = self.opendir(name)
@@ -1563,9 +1572,16 @@ class Dirtable(object):
             self.erase(name)
         return 1
 
-    def close(self, handle):
+    def closeh(self, handle):
         "Updates a modified entry in the table"
         handle.close()
+
+    def close(self):
+        "Closes all files and directories belonging to this Dirtable"
+        # NOTE: with root, implicitly prepares the filesystem dismounting
+        self._checkopen()
+        self.flush()
+        self.closed = 1
 
     def flush(self):
         "Closes all open handles and commits changes to disk"
@@ -1575,6 +1591,7 @@ class Dirtable(object):
         else:
             if DEBUG&1: log("Flushing root dirtable")
             dirs = self.dirtable
+            atexit.unregister(self.flush)
         for i in dirs:
             for h in self.dirtable[i]['Open']:
                if DEBUG&1: log("Closing file handle for opened file '%s'", h)
@@ -1583,15 +1600,6 @@ class Dirtable(object):
             if h:
                 h.close()
                 h.IsValid = False
-        if self.path == '.':
-            try:
-                if hasattr(self.fat.stream, 'cache_flush'):
-                    flush = self.fat.stream.cache_flush
-                elif hasattr(self.fat.stream.disk, 'cache_flush'):
-                    flush = self.fat.stream.disk.cache_flush
-                flush() # force committing to disk before reopening
-            except ValueError:
-                if DEBUG&1: log("ValueError: I/O operation on closed file")
 
     def map_compact(self):
         "Compacts, eventually reordering, a slots map"
@@ -1683,6 +1691,7 @@ class Dirtable(object):
 
     def iterator(self):
         "Iterates through directory table slots, generating a FATDirentry for each one"
+        self._checkopen()
         told = self.stream.tell()
         buf = bytearray()
         s = 1
@@ -1731,6 +1740,7 @@ class Dirtable(object):
 
     def erase(self, name):
         "Marks a file's slot as erased and free the corresponding cluster chain"
+        self._checkopen()
         if type(name) == DirentryType:
             e = name
         else:
@@ -1765,6 +1775,7 @@ class Dirtable(object):
 
     def rename(self, name, newname):
         "Renames a file or directory slot"
+        self._checkopen()
         if type(name) == DirentryType:
             e = name
         else:
@@ -1804,12 +1815,7 @@ class Dirtable(object):
         elif b not in Dirtable._sortby.fix:
             return 1
         else:
-            if Dirtable._sortby.fix.index(a) < Dirtable._sortby.fix.index(b):
-                return -1
-            elif Dirtable._sortby.fix.index(a) > Dirtable._sortby.fix.index(b):
-                return 1
-            else:
-                return 0
+            return cmp(Dirtable._sortby.fix.index(a), Dirtable._sortby.fix.index(b))
 
     def clean(self, shrink=False):
         "Compacts used slots and blanks unused ones, optionally shrinking the table"
@@ -1829,7 +1835,9 @@ class Dirtable(object):
     def sort(self, by_func=None, shrink=False):
         """Sorts the slot entries alphabetically or applying by_func, compacting
         them and zeroing unused ones. Optionally shrinks table. Returns a tuple (used slots, blank slots)."""
+        self._checkopen()
         # CAVE! TABLE MUST NOT HAVE OPEN HANDLES!
+        # CAN WE CHECK AND ABORT?
         if DEBUG&4: log("%s: table size at beginning: %d", self.path, self.stream.size)
         d = {}
         names = []
@@ -1893,6 +1901,7 @@ class Dirtable(object):
 
     def attrib(self, name, perms=('-A',)):
         "Changes the DOS permissions on a table entry. Accepts perms tuple [+-][AHRS]"
+        self._checkopen()
         mask = {'R':0, 'H':1, 'S':2, 'A':5}
         e = self.find(name)
         if not e: return 0
@@ -1910,6 +1919,7 @@ class Dirtable(object):
 
     def label(self, name=None):
         "Gets or sets volume label. Pass an empty string to clear."
+        self._checkopen()
         if self.path != '.':
             raise FATException("A volume label can be assigned in root directory only")
         if name and len(name) > 11:

@@ -770,6 +770,7 @@ class exFATDirentry(Direntry):
 class Dirtable(object):
     "Manages an exFAT directory table"
     def __init__(self, boot, fat, startcluster=0, size=0, nofat=0, path='.'):
+        self.parent = None # parent device/partition container of root FS
         if type(boot) == HandleType:
             self.handle = boot # It's a directory handle
             self.boot = self.handle.File.boot
@@ -782,6 +783,7 @@ class Dirtable(object):
             self.start = startcluster
             self.stream = Chain(boot, fat, startcluster, size, nofat)
         self.stream.isdirectory = 1 # signals to blank cluster tips (root too!)
+        self.closed = 0
         self.path = path
         self.needs_compact = 1
         if path == '.':
@@ -803,7 +805,11 @@ class Dirtable(object):
     def __str__ (self):
         s = "Directory table @LCN %X (LBA %Xh)" % (self.start, self.boot.cl2offset(self.start))
         return s
-        
+
+    def _checkopen(self):
+        if self.closed:
+            raise exFATException('Requested operation on a closed Dirtable!')
+            
     def getdiskspace(self):
         "Returns the disk free space in a tuple (clusters, bytes)"
         free_bytes = self.boot.bitmap.free_clusters * self.boot.cluster
@@ -811,6 +817,7 @@ class Dirtable(object):
 
     def open(self, name):
         "Opens the slot corresponding to an existing file name"
+        self._checkopen()
         res = Handle()
         if type(name) != DirentryType:
             if len(name) > 242: return res
@@ -841,6 +848,7 @@ class Dirtable(object):
     def opendir(self, name):
         """Opens an existing relative directory path beginning in this table and
         return a new Dirtable object or None if not found"""
+        self._checkopen()
         name = name.replace('/','\\')
         path = name.split('\\')
         found = self
@@ -940,6 +948,7 @@ class Dirtable(object):
 
     def rmtree(self, name=None):
         "Removes a full directory tree"
+        self._checkopen()
         if name:
             if DEBUG&8: log("rmtree:opening %s", name)
             target = self.opendir(name)
@@ -961,10 +970,18 @@ class Dirtable(object):
             self.erase(name)
         return 1
 
-    def close(self, handle):
+    def closeh(self, handle):
         "Updates a modified entry in the table"
+        self._checkopen()
         handle.close()
 
+    def close(self):
+        "Closes all files and directories belonging to this Dirtable"
+        # NOTE: with root, implicitly prepares the filesystem dismounting
+        self._checkopen()
+        self.flush()
+        self.closed = 1
+        
     def flush(self):
         "Closes all open handles and commits changes to disk"
         if self.path != '.':
@@ -972,6 +989,7 @@ class Dirtable(object):
             dirs = {self.start: self.dirtable[self.start]}
         else:
             if DEBUG&1: log("Flushing root dirtable")
+            atexit.unregister(self.flush)
             dirs = self.dirtable
         for i in dirs:
             for h in self.dirtable[i]['Open']:
@@ -981,15 +999,6 @@ class Dirtable(object):
             if h:
                 h.close()
                 h.IsValid = False
-        if self.path == '.':
-            try:
-                if hasattr(self.fat.stream, 'cache_flush'):
-                    flush = self.fat.stream.cache_flush
-                elif hasattr(self.fat.stream.disk, 'cache_flush'):
-                    flush = self.fat.stream.disk.cache_flush
-                flush() # force committing to disk before reopening
-            except ValueError:
-                if DEBUG&1: log("ValueError: I/O operation on closed file")
 
     def map_compact(self):
         "Compacts, eventually reordering, a slots map"
@@ -1085,6 +1094,7 @@ class Dirtable(object):
         raise exFATException("Directory table of '%s' has reached its maximum extension!" % self.path)
 
     def iterator(self):
+        self._checkopen()
         told = self.stream.tell()
         buf = bytearray()
         s = 1
@@ -1136,6 +1146,7 @@ class Dirtable(object):
 
     def erase(self, name):
         "Marks a file's slot as erased and free the corresponding clusters"
+        self._checkopen()
         if type(name) == DirentryType:
             e = name
         else:
@@ -1179,6 +1190,7 @@ class Dirtable(object):
 
     def rename(self, name, newname):
         "Renames a file or directory slot"
+        self._checkopen()
         if type(name) == DirentryType:
             e = name
         else:
@@ -1226,6 +1238,7 @@ class Dirtable(object):
 
     def clean(self, shrink=False):
         "Compacts used slots and blanks unused ones, optionally shrinking the table"
+        self._checkopen()
         if DEBUG&8: log("Cleaning directory table %s with keep sort function", self.path)
         return self.sort(None, shrink=shrink) # keep order
 
@@ -1241,7 +1254,9 @@ class Dirtable(object):
     def sort(self, by_func=None, shrink=False):
         """Sorts the slot entries alphabetically or applying by_func, compacting
         them and zeroing unused ones. Optionally shrinks table. Returns a tuple (used slots, blank slots)."""
+        self._checkopen()
         # CAVE! TABLE MUST NOT HAVE OPEN HANDLES!
+        # CAN WE CHECK AND ABORT?
         d = {}
         names = []
         for e in self.iterator():
@@ -1256,6 +1271,7 @@ class Dirtable(object):
         self.stream.seek(0)
         if self.path == '.':
             self.stream.seek(96) # bypass special entries in root
+                                           # 20220118:3 slots *ALWAYS* ?
         for name in names:
             if not name: continue
             self.stream.write(d[name]._buf) # re-writes ordered slots
@@ -1302,6 +1318,7 @@ class Dirtable(object):
 
     def attrib(self, name, perms=('-A',)):
         "Changes the DOS permissions on a table entry. Accepts perms tuple [+-][AHRS]"
+        self._checkopen()
         mask = {'R':0, 'H':1, 'S':2, 'A':5}
         e = self.find(name)
         if not e: return 0
@@ -1319,6 +1336,7 @@ class Dirtable(object):
 
     def label(self, name=None):
         "Gets or sets volume label. Pass an empty string to clear."
+        self._checkopen()
         if self.path != '.':
             raise exFATException("A volume label can be assigned in root directory only")
         if name and len(name) > 11:

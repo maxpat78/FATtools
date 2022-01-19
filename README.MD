@@ -3,12 +3,12 @@ FATtools3
 
 Manually install it under site-packages.
 
-Born to re-sort directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3.9 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
+Born to re-sort directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
 
 It is able to open disk partitioned with both MBR or GPT and to help in partitioning.
 It can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images.
 
-Actually, following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not tested since long ago):
+Actually, following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not regularly tested):
 - sector aligned read/writes with both file images and real disks
 - sector based caching mechanism (for both reading and writing) to speed-up FAT and directory table operations
 - run length encoded map (with tuples and dictionaries) of free clusters, free directory slots, allocated cluster chains
@@ -20,7 +20,7 @@ Actually, following features are implemented (mostly in Python, with a few ctype
 - file fragmentation calculator
 - mkfat tool to properly (partition and) apply a FAT12/16/32 or exFAT filesystem to a block device (file or disk) and let CHKDSK be happy with it (included exFAT compressed Up-Case table generator)
 
-*Obviously, since a filesystem is an extremely complex and delicate matter, and big bugs may lay around, you'll USE IT TOTALLY AT YOUR OWN RISK!* But it seems quite stable and usable, now.
+*Obviously, since a filesystem is an extremely complex and delicate matter, and big bugs may lay around, you'll USE IT TOTALLY AT YOUR OWN RISK!* But it seems quite stable and useable, now.
 
 The most fragile area (and, thus, subject to bugs) was the caching mechanism, that operates in different ways:
 - intercepting small I/O (<= 512 bytes), which is cached in a small circular buffer. Bigger I/O bypasses the cache; when the cache is full, all dirty sectors are committed to disk and the cache buffer is zeroed. Sectors and buffers are paired with Python builtin dictionaries: this permits a good (from a Pythonic perspective) I/O speed during FAT and directory tables access;
@@ -94,5 +94,70 @@ DirC
 DirA'''
 
 root._sortby.fix = new_order.split('\n') # uses built-in directory sort algorithm
-root.sort(root._sortby)
+root.sort(root._sortby) # user-defined order, in _sortby.fix list
+root.sort() # default ordering (alphabetical)
+```
+
+- mixed access with Python and FATtools from the same script:
+```
+# -*- coding: cp1252 -*-
+from FATtools.Volume import vopen, vclose
+from FATtools.mkfat import exfat_mkfs
+from os.path import join
+import os
+
+real_fat_fs = 'F:' # replace with mount point of your file system
+
+# Open and format with FATtools
+fs = vopen(real_fat_fs, 'r+b',what='disk')
+exfat_mkfs(fs, fs.size)
+vclose(fs)
+
+# Write some files with Python and list them
+T = ('c','a','b','d')
+for t in T:
+   open(join(real_fat_fs, t+'.txt'), 'w').write('This is a sample "%s.txt" file.'%t)
+
+print(os.listdir(real_fat_fs+'/'))
+
+# Open again, and sort root with FATtools
+fs = vopen(real_fat_fs, 'r+b')
+fs.sort()
+vclose(fs)
+
+# Check new table order with Python
+print(os.listdir(real_fat_fs+'/'))
+```
+
+- (almost) same as above:
+```
+# -*- coding: cp1252 -*-
+from FATtools.Volume import vopen, vclose
+from FATtools.mkfat import exfat_mkfs
+from FATtools.partutils import partition
+
+# Open & create GPT partition
+o = vopen('\\\\.\\PhysicalDrive1', 'r+b',what='disk')
+print('Partitioning...')
+partition(o, 'mbr')
+vclose(o)
+
+# Reopen and format with EXFAT
+o = vopen('\\\\.\\PhysicalDrive1', 'r+b',what='partition0')
+print('Formatting...')
+exfat_mkfs(o, o.size)
+vclose(o) # auto-close partition AND disk
+
+# Reopen FS and play
+print('Writing...')
+o = vopen('\\\\.\\PhysicalDrive1', 'r+b')
+
+# Write some files with Python and sort them
+T = ('c','a','b','d')
+for t in T:
+   f = o.create(t+'.txt')
+   f.write(b'This is a sample "%s.txt" file.'%bytes(t,'ascii'))
+   f.close()
+o.sort()
+vclose(o)
 ```

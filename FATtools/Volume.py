@@ -19,13 +19,13 @@ def vopen(path, mode='rb', what='auto'):
     'partitionN' tries to open partition number N; 'volume' tries to open a file
     system. """
     if DEBUG&2: log("vopen in '%s' mode", what)
-    if type(path) in (disk.disk, vhdutils.Image, vdiutils.Image, vmdkutils.Image):
+    if type(path) in (disk.disk, vhdutils.Image, vhdxutils.Image, vdiutils.Image, vmdkutils.Image):
         if path.mode == mode:
             d = path
         else:
             d = type(path)(path.name, mode) # reopens with right mode
     else:
-        # Tries to open a raw disk or disk image (plain or VHD)
+        # Tries to open a raw disk or disk image
         if os.name =='nt' and len(path)==2 and path[1] == ':':
             path = '\\\\.\\'+path
         if path.lower().endswith('.vhd'): # VHD image
@@ -45,11 +45,11 @@ def vopen(path, mode='rb', what='auto'):
     # Tries to access a partition
     mbr = partutils.MBR(d.read(512), disksize=d.size)
     if DEBUG&2: log("Opened MBR: %s", mbr)
-    valid_mbr = 1
+    valid_mbr=1
     n = mbr.partitions[0].size()
     if mbr.wBootSignature != 0xAA55:
         if DEBUG&2: log("Invalid Master Boot Record")
-        valid_mbr = 0
+        valid_mbr=0
     elif mbr.partitions[0].bType != 0xEE and (not n or n > d.size):
         if DEBUG&2: log("Invalid Primary partition size in MBR")
         valid_mbr=0
@@ -63,7 +63,10 @@ def vopen(path, mode='rb', what='auto'):
             d.seek(0)
             d.mbr = None
             v = openvolume(d)
-            if v != 'EINV': return v
+            if v != 'EINV':
+                d.volume = v # link volume and device/partition each other
+                v.parent = d
+                return v
             if DEBUG&2: log("No known file system found, returning RAW disk")
             d.seek(0)
             return d
@@ -127,6 +130,7 @@ def vopen(path, mode='rb', what='auto'):
     disk.partition.open = open # adds an open member to partition object
     if what in ('volume', 'auto'):
         v = part.open()
+        part.volume = v # remember volume opened
         if DEBUG&2: log("Returning opened Volume %s", v)
         return v
     else:
@@ -134,6 +138,34 @@ def vopen(path, mode='rb', what='auto'):
         return part
 
     
+# BUG: it assumes one partition per disk, real life might vary!
+def vclose(obj):
+    "Closes intelligently an object returned by vopen (=closes all child partitions/volumes, too)"
+    if type(obj) in (disk.disk, vhdutils.Image, vhdxutils.Image, vdiutils.Image, vmdkutils.Image):
+        if hasattr(obj, 'volume') and obj.volume:
+            if DEBUG&2: log("Closing child volume %s", obj.volume)
+            obj.volume.close()
+        if DEBUG&2: log("Closing %s", obj)
+        obj.close()
+    elif type(obj) == disk.partition:
+        if hasattr(obj, 'volume') and obj.volume:
+            if DEBUG&2: log("Closing child volume %s", obj.volume)
+            obj.volume.close()
+        if DEBUG&2: log("Closing %s", obj)
+        obj.close()
+        if DEBUG&2: log("Closing %s", obj.disk)
+        obj.disk.close()
+    elif type(obj) == FAT.Dirtable or type(obj) == exFAT.Dirtable:
+        if DEBUG&2: log("Closing volume %s", obj)
+        obj.close()
+        if obj.parent:
+            if DEBUG&2: log("Closing %s", obj.parent)
+            obj.parent.close()
+    else:
+        raise BaseException('vclose cannot close such an object: %s' % obj)
+
+
+
 def openvolume(part):
     """Opens a filesystem given a Python disk or partition object, guesses
     the file system and returns the root directory Dirtable"""
@@ -174,6 +206,8 @@ def openvolume(part):
                 boot.bitmap = exFAT.Bitmap(boot, fat, e.dwStartCluster, e.u64DataLength)
                 break
 
+    root.parent = part # remember parent device/partition
+    
     return root
 
 
