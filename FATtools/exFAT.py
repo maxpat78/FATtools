@@ -505,6 +505,7 @@ class Handle(object):
             self.IsValid = False
         if DEBUG&8 > 1: log("Handle close wrote:\n%s", hexdump.hexdump(self.Entry._buf,'return'))
         self.Dir._update_dirtable(self.Entry)
+        self.Dir.filetable.remove(self) # update list of opened files
 
 
 
@@ -1255,13 +1256,14 @@ class Dirtable(object):
 
     def sort(self, by_func=None, shrink=False):
         """Sorts the slot entries alphabetically or applying by_func, compacting
-        them and zeroing unused ones. Optionally shrinks table. Returns a tuple (used slots, blank slots)."""
+        them and zeroing unused ones. Optionally shrinks table. Returns a tuple
+        (used slots, blank slots) or (-1, -1) if there are open handles."""
         self._checkopen()
-        # CAVE! TABLE MUST NOT HAVE OPEN HANDLES!
-        # CAN WE CHECK AND ABORT?
+        if self.filetable: return (-1, -1) # there are open handles, can't sort
         d = {}
         names = []
         for e in self.iterator():
+            if e.IsLabel(): d[0] = e # if label, assign a special key
             n = e.Name()
             d[n] = e
             names+=[n]
@@ -1271,8 +1273,8 @@ class Dirtable(object):
             names = sorted(names, key=str.lower) # default sorting: alphabetical, case insensitive
         self.stream.seek(0)
         if self.path == '.':
-            self.stream.seek(96) # bypass special entries in root
-                                           # 20220118:3 slots *ALWAYS* ?
+            self.stream.seek(64) # bypass special entries in root
+            if 0 in d: self.stream.write(d[0]._buf) # write label
         for name in names:
             if not name: continue
             self.stream.write(d[name]._buf) # re-writes ordered slots

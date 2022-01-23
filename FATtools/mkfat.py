@@ -791,12 +791,13 @@ def exfat_mkfs(stream, size, sector=512, params={}):
     root = Dirtable(boot, fat, boot.dwRootCluster)
     if DEBUG&1: log("Inited Root Dirtable\n%s", root)
 
-    # Write an empty Volume Label (optional), the Bitmap and UpCase slots (mandatory)
-    b = bytearray(32); b[0] = 0x3
-    label = exFATDirentry(b, 0)
-    root.stream.write(label.pack())
+    # Write Bitmap and UpCase slots (mandatory)
     root.stream.write(bitmap.pack())
     root.stream.write(upcase.pack())
+    #~ # Write an empty Volume Label (optional)
+    #~ b = bytearray(32); b[0] = 0x3
+    #~ label = exFATDirentry(b, 0)
+    #~ root.stream.write(label.pack())
     
     root.flush() # commit all changes to disk immediately, or volume won't be usable!
 

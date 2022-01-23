@@ -1036,6 +1036,7 @@ class Handle(object):
         self.Dir.stream.write(self.Entry.pack())
         self.IsValid = False
         self.Dir._update_dirtable(self.Entry)
+        self.Dir.filetable.remove(self) # update list of opened files
 
 
 class Direntry(object):
@@ -1836,14 +1837,15 @@ class Dirtable(object):
 
     def sort(self, by_func=None, shrink=False):
         """Sorts the slot entries alphabetically or applying by_func, compacting
-        them and zeroing unused ones. Optionally shrinks table. Returns a tuple (used slots, blank slots)."""
+        them and zeroing unused ones. Optionally shrinks table. Returns a tuple
+        (used slots, blank slots) or (-1, -1) if there are open handles."""
         self._checkopen()
-        # CAVE! TABLE MUST NOT HAVE OPEN HANDLES!
-        # CAN WE CHECK AND ABORT?
+        if self.filetable: return (-1, -1) # there are open handles, can't sort
         if DEBUG&4: log("%s: table size at beginning: %d", self.path, self.stream.size)
         d = {}
         names = []
         for e in self.iterator():
+            if e.IsLabel(): d[0] = e # if label, assign a special key
             n = e.Name()
             if n in ('.', '..'): continue
             d[n] = e
@@ -1854,6 +1856,7 @@ class Dirtable(object):
             names = sorted(names, key=str.lower) # default sorting: alphabetical, case insensitive
         if self.path == '.':
             self.stream.seek(0)
+            if 0 in d: self.stream.write(d[0]._buf) # write label
         else:
             self.stream.seek(64) # preserves dot entries
         for name in names:
