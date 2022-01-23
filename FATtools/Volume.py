@@ -18,10 +18,12 @@ def vopen(path, mode='rb', what='auto'):
     """Opens a disk, partition or volume according to 'what' parameter: 'auto' 
     selects the volume in the first partition or disk; 'disk' selects the raw disk;
     'partitionN' tries to open partition number N; 'volume' tries to open a file
-    system. """
+    system. 'path' can be: 1) a file or device path; 2) a FATtools disk or virtual
+    disk object; 3) a BytesIO object if mode is 'ramdisk'."""
     if DEBUG&2: log("vopen in '%s' mode", what)
     if type(path) in (disk.disk, vhdutils.Image, vhdxutils.Image, vdiutils.Image, vmdkutils.Image, BytesIO):
         if isinstance(path, BytesIO):
+            # Opens a Ram Disk with a BytesIO object
             d = disk.disk(path, 'ramdisk')
         else:
             if path.mode == mode:

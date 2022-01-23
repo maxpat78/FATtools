@@ -1807,16 +1807,6 @@ class Dirtable(object):
         self.stream.write(e._buf)
         return 1
 
-    @staticmethod
-    def _sortby(a, b):
-        "Helper function that sorts following the order in a list set by the caller in 'fix' variable."
-        if a not in Dirtable._sortby.fix:
-            return -1 # Unknown item comes first
-        elif b not in Dirtable._sortby.fix:
-            return 1
-        else:
-            return cmp(Dirtable._sortby.fix.index(a), Dirtable._sortby.fix.index(b))
-
     def clean(self, shrink=False):
         "Compacts used slots and blanks unused ones, optionally shrinking the table"
         if DEBUG&4: log("Cleaning directory table %s with keep sort function", self.path)
@@ -1832,6 +1822,18 @@ class Dirtable(object):
             in_use+=len(e._buf)
         print("%s: %d entries in %d slots on %d allocated" % (self.path, count, in_use//32, self.stream.size//32))
         
+    @staticmethod
+    def _sortby(a, b):
+        """Helper function for functools.cmp_to_key (Python 3): it sorts
+        according to a user provided list in '_sortby.fix' member; order of
+        unknown items is preserved."""
+        X = Dirtable._sortby.fix
+        if a not in X: return 1
+        if b not in X: return -1
+        if X.index(a) < X.index(b): return -1
+        if X.index(a) > X.index(b): return 1
+        return 0
+
     def sort(self, by_func=None, shrink=False):
         """Sorts the slot entries alphabetically or applying by_func, compacting
         them and zeroing unused ones. Optionally shrinks table. Returns a tuple (used slots, blank slots)."""
@@ -1847,9 +1849,9 @@ class Dirtable(object):
             d[n] = e
             names+=[n]
         if by_func:
-            names.sort(key=functools.cmp_to_key(by_func)) # user order
+            names = sorted(names, key=functools.cmp_to_key(by_func))
         else:
-            names = sorted(names) # default sorting
+            names = sorted(names, key=str.lower) # default sorting: alphabetical, case insensitive
         if self.path == '.':
             self.stream.seek(0)
         else:

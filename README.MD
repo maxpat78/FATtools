@@ -27,7 +27,7 @@ The most fragile area (and, thus, subject to bugs) was the caching mechanism, th
 - intercepting small I/O (<= 512 bytes), which is cached in a small circular buffer. Bigger I/O bypasses the cache; when the cache is full, all dirty sectors are committed to disk and the cache buffer is zeroed. Sectors and buffers are paired with Python builtin dictionaries: this permits a good (from a Pythonic perspective) I/O speed during FAT and directory tables access;
 - mantaining a dictionary of pre-decoded FAT indexes, to improve the speed of repetitive access to cluster chains;
 - mantaining a dictionary of short and long names (paired with their respective directory slots) for each directory table, to speed up searches and updates in directory tables;
-- mantaining a RLE map of of free clusters, free directory slots and allocated cluster chains, to dramatically improve speed of allocation and file access. 
+- mantaining a RLE map of free clusters, free directory slots and allocated cluster chains, to dramatically improve speed of allocation and file access. 
 
 *Actually, the I/O speed is closer to system's one.*
 

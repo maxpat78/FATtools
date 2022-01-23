@@ -127,6 +127,7 @@ class disk(object):
         return "Python disk '%s' (mode '%s') @%016Xh" % (self._file.name, self.mode, self.pos)
 
     def __init__(self, name, mode='rb', buffering=0):
+        "'name' is the name of a file or device to open or, if mode is 'ramdisk', a BytesIO object with raw disk data"
         self.mode = mode
         self.pos = 0 # linear pos in the virtual stream
         self.si = 0 # disk sector index
