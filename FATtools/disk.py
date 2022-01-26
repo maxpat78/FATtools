@@ -381,6 +381,7 @@ class partition(object):
         self.seek(0) # force disk to partition start
 
     def close(self):
+        self.flush()
         self.closed = True
 
     def seek(self, offset, whence=0):
