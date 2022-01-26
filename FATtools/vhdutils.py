@@ -50,7 +50,7 @@ class Footer(object):
     0x10: ('u64DataOffset', '>Q'), # absolute offset of next structure, or 0xFFFFFFFFFFFFFFFF for fixed disks
     0x18: ('dwTimestamp', '>I'), # creation time, in seconds since 1/1/2000 12:00 AM UTC
     0x1C: ('dwCreatorApp', '4s'), # creator application, here Py
-    0x20: ('dwCreatorVer', '>I'), # its version, here 0x30009 (3.9)
+    0x20: ('dwCreatorVer', '>I'), # its version, here 0x3000A (3.10)
     0x24: ('dwCreatorHost', '4s'), # Wi2k or Mac
     0x28: ('u64OriginalSize', '>Q'), # Initial size of the emulated disk
     0x30: ('u64CurrentSize', '>Q'), # Current size of the emulated disk
@@ -661,7 +661,20 @@ def mk_crc(s):
 
 
 def mk_fixed(name, size):
-    "Creates an empty fixed VHD or transforms a previous image"
+    "Creates an empty fixed VHD or transforms a previous image if 'size' is -1"
+    if os.path.exists(name):
+        f = myfile(name, 'r+b')
+        if size == -1:
+            f.seek(0, 2)
+            size = f.tell()
+        f.seek(size)
+        f.truncate()
+        if DEBUG&4: log("making new Fixed VHD '%s' of %.02f MiB from pre-existant image", name, float(size//(1<<20)))
+    else:
+        if DEBUG&4: log("making new Fixed VHD '%s' of %.02f MiB", name, float(size//(1<<20)))
+        f = myfile(name, 'wb')
+        f.seek(size) # quickly allocates space
+
     ft = Footer()
     ft.sCookie = b'conectix'
     ft.dwFeatures = 2
@@ -669,7 +682,7 @@ def mk_fixed(name, size):
     ft.u64DataOffset = 0xFFFFFFFFFFFFFFFF
     ft.dwTimestamp = int(time.mktime(time.gmtime()))-946681200
     ft.dwCreatorApp = b'Py  '
-    ft.dwCreatorVer = 0x30009
+    ft.dwCreatorVer = 0x3000A
     ft.dwCreatorHost = b'Wi2k'
     ft.u64OriginalSize = size
     ft.u64CurrentSize = size
@@ -677,15 +690,6 @@ def mk_fixed(name, size):
     ft.dwDiskType = 2
     ft.sUniqueId = uuid.uuid4().bytes
     
-    if os.path.exists(name):
-        if DEBUG&4: log("making new Fixed VHD '%s' of %.02f MiB from pre-existant image", name, float(size//(1<<20)))
-        f = myfile(name, 'r+b')
-        f.seek(size)
-        f.truncate()
-    else:
-        if DEBUG&4: log("making new Fixed VHD '%s' of %.02f MiB", name, float(size//(1<<20)))
-        f = myfile(name, 'wb')
-        f.seek(size) # quickly allocates space
     f.write(ft.pack()) # stores Footer
     f.flush(); f.close()
 
@@ -703,7 +707,7 @@ def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no'):
     ft.u64DataOffset = 512
     ft.dwTimestamp = int(time.mktime(time.gmtime()))-946681200
     ft.dwCreatorApp = b'Py  '
-    ft.dwCreatorVer = 0x30009
+    ft.dwCreatorVer = 0x3000A
     ft.dwCreatorHost = b'Wi2k'
     ft.u64OriginalSize = size
     ft.u64CurrentSize = size
@@ -747,7 +751,7 @@ def mk_diff(name, base, overwrite='no'):
     parent_ts = int(time.mktime(time.gmtime(os.stat(base).st_mtime)))-946681200
     ima.footer.dwDiskType = 4
     ima.footer.dwCreatorApp = b'Py  '
-    ima.footer.dwCreatorVer = 0x30009
+    ima.footer.dwCreatorVer = 0x3000A
     ima.footer.dwCreatorHost = b'Wi2k'
     ima.footer.dwTimestamp = int(time.mktime(time.gmtime()))-946681200
     ima.footer.sUniqueId = uuid.uuid4().bytes
