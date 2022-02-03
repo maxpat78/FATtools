@@ -505,7 +505,7 @@ class Handle(object):
             self.IsValid = False
         if DEBUG&8 > 1: log("Handle close wrote:\n%s", hexdump.hexdump(self.Entry._buf,'return'))
         self.Dir._update_dirtable(self.Entry)
-        self.Dir.filetable.remove(self) # update list of opened files
+        if self in self.Dir.filetable: self.Dir.filetable.remove(self) # update list of opened files
 
 
 

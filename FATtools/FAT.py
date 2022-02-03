@@ -1036,7 +1036,7 @@ class Handle(object):
         self.Dir.stream.write(self.Entry.pack())
         self.IsValid = False
         self.Dir._update_dirtable(self.Entry)
-        self.Dir.filetable.remove(self) # update list of opened files
+        if self in self.Dir.filetable: self.Dir.filetable.remove(self) # update list of opened files
 
 
 class Direntry(object):
