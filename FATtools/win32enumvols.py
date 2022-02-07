@@ -1,13 +1,12 @@
 # -*- coding: cp1252 -*-
 import os
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 from ctypes import *
 
 if os.name == 'nt':
     from ctypes.wintypes import *
 
 from FATtools.debug import log
-
-DEBUG = 0
 
 # Required to avoid access violations
 windll.kernel32.FindFirstVolumeA.restype = HANDLE

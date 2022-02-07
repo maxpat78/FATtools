@@ -2,11 +2,10 @@
 # Utilities to manage an exFAT  file system
 #
 
-DEBUG=0
-
 import sys, copy, os, struct, time, io, atexit, functools
 from datetime import datetime
 from collections import OrderedDict
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
 from FATtools.debug import log
 from FATtools import utils
@@ -798,7 +797,7 @@ class Dirtable(object):
             # Handle contains the unique Handle to the directory table
             # Open lists opened files
             self.dirtable[self.start] = {'Names':{}, 'Handle':None, 'slots_map':{}, 'Open':[]} # Names key MUST be Python Unicode!
-            #~ if DEBUG&4: log("Global directory table is '%s':", self.dirtable)
+            #~ if DEBUG&8: log("Global directory table is '%s':", self.dirtable)
             self.map_slots()
         #~ print self.dirtable
         self.filetable = self.dirtable[self.start]['Open']
@@ -843,7 +842,7 @@ class Dirtable(object):
             res.Entry = e
             res.Dir = self
             self.filetable += [res]
-            if DEBUG&1: log("open() made a new handle for file starting @%Xh", e.Start())
+            if DEBUG&8: log("open() made a new handle for file starting @%Xh", e.Start())
         return res
 
     def opendir(self, name):
@@ -986,15 +985,19 @@ class Dirtable(object):
     def flush(self):
         "Closes all open handles and commits changes to disk"
         if self.path != '.':
-            if DEBUG&1: log("Flushing dirtable for '%s'", self.path)
+            if DEBUG&8: log("Flushing dirtable for '%s'", self.path)
             dirs = {self.start: self.dirtable[self.start]}
         else:
-            if DEBUG&1: log("Flushing root dirtable")
+            if DEBUG&8: log("Flushing root dirtable")
             atexit.unregister(self.flush)
             dirs = self.dirtable
+        if not dirs:
+            if DEBUG&8: log("No directories to flush!")
         for i in dirs:
-            for h in self.dirtable[i]['Open']:
-               if DEBUG&1: log("Closing file handle for opened file '%s'", h)
+            if not self.dirtable[i]['Open']:
+                if DEBUG&8: log("No opened files!")
+            for h in copy.copy(self.dirtable[i]['Open']): # the original list gets shrinked
+               if DEBUG&8: log("Closing file handle for opened file '%s'", h)
                h.close()
             h = self.dirtable[i]['Handle']
             if h:
@@ -1162,10 +1165,10 @@ class Dirtable(object):
         start = e.Start()
         if DEBUG&8: log("Erasing slot @%d (pointing at %Xh)", e._pos, start)
         if start in self.dirtable:
-            if DEBUG&4: log("Marking open Handle for %Xh as invalid", start)
+            if DEBUG&8: log("Marking open Handle for %Xh as invalid", start)
             self.dirtable[start]['Handle'].IsValid = False # 20190413: prevents post-mortem updating
         #~ elif start in self.filetable:
-            #~ if DEBUG&4: log("Removing Handle for %Xh from filetable", start)
+            #~ if DEBUG&8: log("Removing Handle for %Xh from filetable", start)
             #~ del self.filetable[start]
         if start:
             if e.IsContig():
@@ -1332,7 +1335,7 @@ class Dirtable(object):
                 e.wFileAttributes &= ~(1 << mask[perm[1].upper()])
             else:
                 e.wFileAttributes |= (1 << mask[perm[1].upper()])
-        if DEBUG&4: log("Updating permissions on '%s' with code=%X", name, e.wFileAttributes)
+        if DEBUG&8: log("Updating permissions on '%s' with code=%X", name, e.wFileAttributes)
         self.stream.seek(e._pos)
         self.stream.write(e.pack())
         return 1

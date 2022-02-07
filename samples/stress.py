@@ -2,7 +2,7 @@
 from random import *
 import sys, os, hashlib, logging, optparse, hexdump
 
-DEBUG=0
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
 from FATtools import Volume
 from FATtools.debug import log

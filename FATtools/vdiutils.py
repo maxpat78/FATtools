@@ -27,7 +27,7 @@ A Fixed VDI is like a Dynamic one, also: but all blocks are allocated at
 creation time."""
 import atexit, io, struct, uuid, zlib, ctypes, time, os, math, glob
 
-DEBUG = 0
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 import FATtools.utils as utils
 from FATtools.debug import log
 from FATtools.utils import myfile
@@ -112,7 +112,7 @@ class BAT(object):
         "Retrieves the value stored in a given block index"
         if index < 0:
             index += self.size
-        if DEBUG&8: log("%s: requested to read BAT[0x%X]", self.stream.name, index)
+        if DEBUG&16: log("%s: requested to read BAT[0x%X]", self.stream.name, index)
         if not (0 <= index <= self.size-1):
             raise BaseException("Attempt to read a #%d block past disk end"%index)
         slot = self.decoded.get(index)
@@ -122,7 +122,7 @@ class BAT(object):
         self.stream.seek(pos)
         slot = struct.unpack("<I", self.stream.read(4))[0]
         self.decoded[index] = slot
-        if DEBUG&4: log("%s: got BAT[0x%X]=0x%X @0x%X", self.stream.name, index, slot, pos)
+        if DEBUG&16: log("%s: got BAT[0x%X]=0x%X @0x%X", self.stream.name, index, slot, pos)
         self.stream.seek(opos) # rewinds
         return slot
 
@@ -133,7 +133,7 @@ class BAT(object):
         self.decoded[index] = value
         dsp = index*4
         pos = self.offset+dsp
-        if DEBUG&4: log("%s: set BAT[0x%X]=0x%X @0x%X", self.stream.name, index, value, pos)
+        if DEBUG&16: log("%s: set BAT[0x%X]=0x%X @0x%X", self.stream.name, index, value, pos)
         opos = self.stream.tell()
         self.stream.seek(pos)
         value = struct.pack("<I", value)
@@ -145,7 +145,7 @@ class BAT(object):
         self.stream.seek(0, 2)
         ssize = self.stream.tell() # container actual size
         if self.offset+4*self.size > ssize:
-            if DEBUG&4: log("%s: container size (%d) is shorter than expected minimum (%d), truncated BAT", self, ssize, self.offset+4*self.size)
+            if DEBUG&16: log("%s: container size (%d) is shorter than expected minimum (%d), truncated BAT", self, ssize, self.offset+4*self.size)
             self.isvalid = -1 # invalid container size
             return
         raw_size =  self.bsize # RAW block size, including bitmap
@@ -162,22 +162,22 @@ class BAT(object):
                 continue
             if a in seen:
                 self.isvalid = -2 # duplicated block address
-                if DEBUG&4: log("%s: BAT[%d] offset (sector %X) was seen more than once", self, i, a)
+                if DEBUG&16: log("%s: BAT[%d] offset (sector %X) was seen more than once", self, i, a)
                 if selftest: break
                 print("ERROR: BAT[%d] offset (sector %X) was seen more than once" %(i, a))
             if a*self.bsize > last_block or a*self.bsize+raw_size > ssize:
-                if DEBUG&4: log("%s: block %d offset (sector %X) exceeds allocated file size", self, i, a)
+                if DEBUG&16: log("%s: block %d offset (sector %X) exceeds allocated file size", self, i, a)
                 self.isvalid = -3 # block address beyond file's end detected
                 if selftest: break
                 print("ERROR: BAT[%d] offset (sector %X) exceeds allocated file size" %(i, a))
             if (a*self.bsize-first_block)%raw_size:
-                if DEBUG&4: log("%s: BAT[%d] offset (sector %X) is not aligned", self, i, a)
+                if DEBUG&16: log("%s: BAT[%d] offset (sector %X) is not aligned", self, i, a)
                 self.isvalid = -4 # block address not aligned
                 if selftest: break
                 print("ERROR: BAT[%d] offset (sector %X) is not aligned, overlapping blocks" %(i, a))
             seen += [a]
         if unallocated + allocated != self.size:
-            if DEBUG&4: log("%s: BAT has %d blocks allocated only, container %d", self, len(seen), allocated)
+            if DEBUG&16: log("%s: BAT has %d blocks allocated only, container %d", self, len(seen), allocated)
             self.isvalid = 0
             if selftest: return
             print("WARNING: BAT has %d blocks allocated only, container %d" % (len(seen), allocated))
@@ -216,7 +216,7 @@ class Image(object):
                     break
                 parent=''
             if os.path.exists(parent):
-                if DEBUG&8: log("Ok, parent image found.")
+                if DEBUG&16: log("Ok, parent image found.")
             if not parent:
                 raise BaseException("VDI Differencing Image parent not found!")
             self.Parent = Image(parent, "rb")
@@ -243,7 +243,7 @@ class Image(object):
 
     def seek(self, offset, whence=0):
         # "virtual" seeking, real is performed at read/write time!
-        if DEBUG&8: log("%s: seek(0x%X, %d) from 0x%X", self.name, offset, whence, self._pos)
+        if DEBUG&16: log("%s: seek(0x%X, %d) from 0x%X", self.name, offset, whence, self._pos)
         if not whence:
             self._pos = offset
         elif whence == 1:
@@ -252,7 +252,7 @@ class Image(object):
             self._pos = self.size + offset
         if self._pos < 0:
             self._pos = 0
-        if DEBUG&8: log("%s: final _pos is 0x%X", self.name, self._pos)
+        if DEBUG&16: log("%s: final _pos is 0x%X", self.name, self._pos)
         if self._pos >= self.size:
             raise BaseException("%s: can't seek @0x%X past disk end!" % (self.name, self._pos))
         if self.Parent:
@@ -263,7 +263,7 @@ class Image(object):
     
     def close(self):
         if self.stream.mode != "rb" and self.tstamp != os.stat(self.name).st_mtime:
-            if DEBUG&8: log("%s: VDI container was modified, updating header", self.name)
+            if DEBUG&16: log("%s: VDI container was modified, updating header", self.name)
             # Updates header once (dwAllocatedBlocks and sUuidModify) if written
             try:
                 f=self.stream
@@ -274,7 +274,7 @@ class Image(object):
                 f.seek(0)
                 f.write(self.header.pack())
             except:
-                if DEBUG&8: log("exception in vdiutils.Image.close!")
+                if DEBUG&16: log("exception in vdiutils.Image.close!")
         self.stream.close()
         
     def read(self, size=-1):
@@ -286,7 +286,7 @@ class Image(object):
             block = self.bat[self._pos//self.block]
             offset = self._pos%self.block
             leftbytes = self.block-offset
-            if DEBUG&4: log("%s: reading at block %d, offset 0x%X (vpos=0x%X, epos=0x%X)", self.name, self._pos//self.block, offset, self._pos, self.stream.tell())
+            if DEBUG&16: log("%s: reading at block %d, offset 0x%X (vpos=0x%X, epos=0x%X)", self.name, self._pos//self.block, offset, self._pos, self.stream.tell())
             if leftbytes <= size:
                 got=leftbytes
                 size-=leftbytes
@@ -296,11 +296,11 @@ class Image(object):
             self._pos += got
             if block==0xFFFFFFFF or block==0xFFFFFFFE:
                 if self.Parent and block==0xFFFFFFFF:
-                    if DEBUG&4: log("%s: reading %d bytes from parent", self.name, got)
+                    if DEBUG&16: log("%s: reading %d bytes from parent", self.name, got)
                     self.Parent.seek(self._pos-got)
                     buf += self.Parent.read(got)
                 else:
-                    if DEBUG&4: log("%s: block content is virtual (zeroed)", self.name)
+                    if DEBUG&16: log("%s: block content is virtual (zeroed)", self.name)
                     buf+=bytearray(got)
                 continue
             else:
@@ -310,7 +310,7 @@ class Image(object):
 
     def write(self, s):
         "Writes (Normal, Differencing image)"
-        if DEBUG&8: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
+        if DEBUG&16: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
         size = len(s)
         if not size: return
         i=0
@@ -332,7 +332,7 @@ class Image(object):
                     self.bat[self._pos//self.block] = block
                     self.Parent.seek(self._pos//self.block*self.block)
                     self.stream.write(self.Parent.read(self.block))
-                    if DEBUG&4: log("copied old block #%d @0x%X", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                    if DEBUG&16: log("copied old block #%d @0x%X", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
                 else:
                     # we keep a block virtualized until we write zeros
                     if s[i:i+put] == self.zero[:put]:
@@ -340,7 +340,7 @@ class Image(object):
                             self.bat[self._pos//self.block] = 0xFFFFFFFE
                         i+=put
                         self._pos+=put
-                        if DEBUG&4: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                        if DEBUG&16: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
                         continue
                     else:
                         # allocates a new block at end before writing
@@ -349,9 +349,9 @@ class Image(object):
                         self.bat[self._pos//self.block] = block
                         self.stream.seek(self.block-1, 1)
                         self.stream.write(b'\x00') # force effective block allocation
-                        if DEBUG&4: log("allocating new block #%d @0x%X", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                        if DEBUG&16: log("allocating new block #%d @0x%X", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
             self.stream.seek(self.header.dwBlocksOffset+block*self.block+self.header.dwBlockExtraSize+offset)
-            if DEBUG&4: log("writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self._pos//self.block, offset, self._pos, i, i+put)
+            if DEBUG&16: log("writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self._pos//self.block, offset, self._pos, i, i+put)
             self.stream.write(s[i:i+put])
             i+=put
             self._pos+=put
@@ -388,7 +388,7 @@ def mk_fixed(name, size, block=(1<<20), overwrite='no'):
     h.dwAllocatedBlocks = size//block
     h.dwImageType = 2
        
-    if DEBUG&4: log("making new Fixed VDI '%s' of %.02f MiB with block of %d bytes", name, float(size//(1<<20)), block)
+    if DEBUG&16: log("making new Fixed VDI '%s' of %.02f MiB with block of %d bytes", name, float(size//(1<<20)), block)
 
     f = myfile(name, 'wb')
     s = h.pack()
@@ -413,7 +413,7 @@ def mk_dynamic(name, size, block=(1<<20), overwrite='no'):
     h = _mk_common(name, size, block, overwrite)
     h.dwImageType = 1
        
-    if DEBUG&4: log("making new Dynamic VDI '%s' of %.02f MiB with block of %d bytes", name, float(size//(1<<20)), block)
+    if DEBUG&16: log("making new Dynamic VDI '%s' of %.02f MiB with block of %d bytes", name, float(size//(1<<20)), block)
 
     f = myfile(name, 'wb')
     s = h.pack()
@@ -440,7 +440,7 @@ def mk_diff(name, base, overwrite='no'):
     ima.header.sUuidCreate=uuid.uuid4().bytes
     ima.header.sUuidModify=uuid.uuid4().bytes
 
-    if DEBUG&4: log("making new Differencing VDI '%s' of %.02f MiB", name, float(ima.size//(1<<20)))
+    if DEBUG&16: log("making new Differencing VDI '%s' of %.02f MiB", name, float(ima.size//(1<<20)))
 
     f = myfile(name, 'wb')
     s=ima.header.pack()

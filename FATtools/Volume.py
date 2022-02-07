@@ -4,12 +4,12 @@
 # High-level functions to open disks, partitions, volumes and play with them easily.
 #
 #
+
 import os, time, sys, re, glob, fnmatch
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 from io import BytesIO
 from FATtools import disk, utils, FAT, exFAT, partutils
 from FATtools import vhdutils, vhdxutils, vdiutils, vmdkutils
-
-DEBUG = 0
 from FATtools.debug import log
 
 
@@ -161,7 +161,7 @@ def vclose(obj):
         obj.close()
         if DEBUG&2: log("Closing %s", obj.disk)
         obj.disk.close()
-    elif type(obj) == FAT.Dirtable or type(obj) == exFAT.Dirtable:
+    elif type(obj) in (FAT.Dirtable, exFAT.Dirtable):
         if DEBUG&2: log("Closing volume %s", obj)
         obj.close()
         if obj.parent:

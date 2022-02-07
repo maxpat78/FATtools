@@ -27,11 +27,10 @@ or FE FF FF is used.
 GPT partitions use a protective MBR with the triple (1023, 255, 63) or
 FF FF FF and a partition type of 0xEE."""
 
-import struct
+import struct, os
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 from FATtools import utils
 from FATtools.gptutils import *
-
-DEBUG = 0
 
 from FATtools.debug import log
 
@@ -257,7 +256,8 @@ mbr_types = {
 }
 
 
-def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
+#~ def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
+def partition(disk, fmt='gpt', part_name='', mbr_type=0xC):
     "Makes a single partition with all disk space"
     disk.seek(0)
     if fmt == 'mbr':

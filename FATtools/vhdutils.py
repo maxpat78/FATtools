@@ -34,7 +34,7 @@ such value is kept until a block is written with all zeros, too.
 PLEASE NOTE THAT ALL NUMBERS ARE IN BIG ENDIAN FORMAT! """
 import io, struct, uuid, zlib, ctypes, time, os, math
 
-DEBUG = 0
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 import FATtools.utils as utils
 from FATtools.debug import log
 from FATtools.utils import myfile
@@ -96,7 +96,7 @@ class Footer(object):
         if self.sCookie != b'conectix' or self.dwCreatorHost not in (b'Wi2k',b'Mac'):
             return 0
         if self.dwChecksum != struct.unpack(">I", self.crc())[0]:
-            if DEBUG&4: log("Footer checksum 0x%X calculated != 0x%X stored", self.dwChecksum, struct.unpack(">I", self.crc())[0])
+            if DEBUG&16: log("Footer checksum 0x%X calculated != 0x%X stored", self.dwChecksum, struct.unpack(">I", self.crc())[0])
         return 1
 
 
@@ -160,7 +160,7 @@ class DynamicHeader(object):
         if self.sCookie != b'cxsparse':
             return 0
         if self.dwChecksum != struct.unpack(">I", self.crc())[0]:
-            if DEBUG&4: log("Dynamic Header checksum 0x%X calculated != 0x%X stored", self.dwChecksum, struct.unpack(">I", self.crc())[0])
+            if DEBUG&16: log("Dynamic Header checksum 0x%X calculated != 0x%X stored", self.dwChecksum, struct.unpack(">I", self.crc())[0])
         return 1
 
 
@@ -183,7 +183,7 @@ class BAT(object):
         "Retrieves the value stored in a given block index"
         if index < 0:
             index += self.size
-        if DEBUG&8: log("%s: requested to read BAT[0x%X]", self.stream.name, index)
+        if DEBUG&16: log("%s: requested to read BAT[0x%X]", self.stream.name, index)
         if not (0 <= index <= self.size-1):
             raise BaseException("Attempt to read a #%d block past disk end"%index)
         slot = self.decoded.get(index)
@@ -193,7 +193,7 @@ class BAT(object):
         self.stream.seek(pos)
         slot = struct.unpack(">I", self.stream.read(4))[0]
         self.decoded[index] = slot
-        if DEBUG&4: log("%s: got BAT[0x%X]=0x%X @0x%X", self.stream.name, index, slot, pos)
+        if DEBUG&16: log("%s: got BAT[0x%X]=0x%X @0x%X", self.stream.name, index, slot, pos)
         self.stream.seek(opos) # rewinds
         return slot
 
@@ -204,7 +204,7 @@ class BAT(object):
         self.decoded[index] = value
         dsp = index*4
         pos = self.offset+dsp
-        if DEBUG&4: log("%s: set BAT[0x%X]=0x%X @0x%X", self.stream.name, index, value, pos)
+        if DEBUG&16: log("%s: set BAT[0x%X]=0x%X @0x%X", self.stream.name, index, value, pos)
         opos = self.stream.tell()
         self.stream.seek(pos)
         value = struct.pack(">I", value)
@@ -216,7 +216,7 @@ class BAT(object):
         self.stream.seek(0, 2)
         ssize = self.stream.tell() # container actual size
         if self.offset+4*self.size > ssize:
-            if DEBUG&4: log("%s: container size (%d) is shorter than expected minimum (%d), truncated BAT", self, ssize, self.offset+4*self.size)
+            if DEBUG&16: log("%s: container size (%d) is shorter than expected minimum (%d), truncated BAT", self, ssize, self.offset+4*self.size)
             self.isvalid = -1 # invalid container size
             return
         raw_size = self.bsize + max(512, (self.bsize//512)//8) # RAW block size, including bitmap
@@ -234,16 +234,16 @@ class BAT(object):
                 continue
             if a in seen:
                 self.isvalid = -2 # duplicated block address
-                if DEBUG&4: log("%s: BAT[%d] offset (sector %X) was seen more than once", self, i, a)
+                if DEBUG&16: log("%s: BAT[%d] offset (sector %X) was seen more than once", self, i, a)
                 if selftest: break
                 print("ERROR: BAT[%d] offset (sector %X) was seen more than once" %(i, a))
             if a*512 > last_block or a*512+raw_size > ssize:
-                if DEBUG&4: log("%s: block %d offset (sector %X) exceeds allocated file size", self, i, a)
+                if DEBUG&16: log("%s: block %d offset (sector %X) exceeds allocated file size", self, i, a)
                 self.isvalid = -3 # block address beyond file's end detected
                 if selftest: break
                 print("ERROR: BAT[%d] offset (sector %X) exceeds allocated file size" %(i, a))
             if (a*512-first_block)%raw_size:
-                if DEBUG&4: log("%s: BAT[%d] offset (sector %X) is not aligned", self, i, a)
+                if DEBUG&16: log("%s: BAT[%d] offset (sector %X) is not aligned", self, i, a)
                 self.isvalid = -4 # block address not aligned
                 if selftest: break
                 print("ERROR: BAT[%d] offset (sector %X) is not aligned, overlapping blocks" %(i, a))
@@ -251,7 +251,7 @@ class BAT(object):
 
         # Neither Windows 10 nor VHDDump detects this case
         if unallocated + allocated != self.size:
-            if DEBUG&4: log("%s: BAT has %d blocks allocated only, container %d", self, len(seen), allocated)
+            if DEBUG&16: log("%s: BAT has %d blocks allocated only, container %d", self, len(seen), allocated)
             self.isvalid = 0
             if selftest: return
             print("WARNING: BAT has %d blocks allocated only, container %d" % (len(seen), allocated))
@@ -293,7 +293,7 @@ class ParentLocator(object):
 class BlockBitmap(object):
     "Handles the block bitmap"
     def __init__ (self, s, i):
-        if DEBUG&8: log("inited Bitmap for block #%d", i)
+        if DEBUG&16: log("inited Bitmap for block #%d", i)
         self.bmp = s
         self.i = i
 
@@ -306,10 +306,10 @@ class BlockBitmap(object):
         "Sets or clears a bit or bits run"
         pos = sector//8
         rem = sector%8
-        if DEBUG&8: log("set(%Xh,%d%s) start @0x%X:%d", sector, length, ('',' (clear)')[clear!=False], pos, rem)
+        if DEBUG&16: log("set(%Xh,%d%s) start @0x%X:%d", sector, length, ('',' (clear)')[clear!=False], pos, rem)
         if rem:
             B = self.bmp[pos]
-            if DEBUG&8: log("got byte {0:08b}".format(B))
+            if DEBUG&16: log("got byte {0:08b}".format(B))
             todo = min(8-rem, length)
             if clear:
                 B &= ~(((0xFF<<(8-todo))&0xFF) >> rem)
@@ -317,7 +317,7 @@ class BlockBitmap(object):
                 B |= (((0xFF<<(8-todo))&0xFF) >> rem)
             self.bmp[pos] = B
             length -= todo
-            if DEBUG&8: log("set byte {0:08b}, left={1}".format(B, length))
+            if DEBUG&16: log("set byte {0:08b}, left={1}".format(B, length))
             pos+=1
         octets = length//8
         while octets:
@@ -330,15 +330,15 @@ class BlockBitmap(object):
             pos+=i
         rem = length%8
         if rem:
-            if DEBUG&8: log("last bits=%d", rem)
+            if DEBUG&16: log("last bits=%d", rem)
             B = self.bmp[pos]
-            if DEBUG&8: log("got B={0:08b}".format(B))
+            if DEBUG&16: log("got B={0:08b}".format(B))
             if clear:
                 B &= ~((0xFF<<(8-rem))&0xFF)
             else:
                 B |= ((0xFF<<(8-rem))&0xFF)
             self.bmp[pos] = B
-            if DEBUG&8: log("set B={0:08b}".format(B))
+            if DEBUG&16: log("set B={0:08b}".format(B))
 
 
 
@@ -390,9 +390,9 @@ class Image(object):
                     self.stream.seek(loc.dwPlatformDataOffset)
                     parent = self.stream.read(loc.dwPlatformDataLength)
                     parent = parent.decode('utf_16_le') # This in Windows format!
-                    if DEBUG&8: log("%s: init trying to access parent image '%s'", self.name, parent)
+                    if DEBUG&16: log("%s: init trying to access parent image '%s'", self.name, parent)
                     if os.path.exists(parent):
-                        if DEBUG&8: log("Ok, parent image found.")
+                        if DEBUG&16: log("Ok, parent image found.")
             if not parent:
                 hparent = self.header.sParentUnicodeName.decode('utf-16be')
                 hparent = hparent[:hparent.find('\0')]
@@ -400,7 +400,7 @@ class Image(object):
             self.Parent = Image(parent, "rb")
             parent_ts = int(time.mktime(time.gmtime(os.stat(parent).st_mtime)))-946681200
             if parent_ts != self.header.dwParentTimeStamp:
-                if DEBUG&8: log("TimeStamps: parent=%d self=%d",  parent_ts, self.header.dwParentTimeStamp)
+                if DEBUG&16: log("TimeStamps: parent=%d self=%d",  parent_ts, self.header.dwParentTimeStamp)
                 raise BaseException("Differencing Image timestamp not matched: parent was modified after link!")
             if self.Parent.footer.sUniqueId != self.header.sParentUniqueId:
                 raise BaseException("Differencing Image parent's UUID not matched!")
@@ -423,7 +423,7 @@ class Image(object):
 
     def seek(self, offset, whence=0):
         # "virtual" seeking, real is performed at read/write time!
-        if DEBUG&8: log("%s: seek(0x%X, %d) from 0x%X", self.name, offset, whence, self._pos)
+        if DEBUG&16: log("%s: seek(0x%X, %d) from 0x%X", self.name, offset, whence, self._pos)
         if not whence:
             self._pos = offset
         elif whence == 1:
@@ -432,7 +432,7 @@ class Image(object):
             self._pos = self.size + offset
         if self._pos < 0:
             self._pos = 0
-        if DEBUG&8: log("%s: final _pos is 0x%X", self.name, self._pos)
+        if DEBUG&16: log("%s: final _pos is 0x%X", self.name, self._pos)
         if self._pos >= self.size:
             raise BaseException("%s: can't seek @0x%X past disk end!" % (self.name, self._pos))
 
@@ -459,7 +459,7 @@ class Image(object):
             block = self.bat[self._pos//self.block]
             offset = self._pos%self.block
             leftbytes = self.block-offset
-            if DEBUG&4: log("reading at block %d, offset 0x%X (vpos=0x%X, epos=0x%X)", self._pos//self.block, offset, self._pos, self.stream.tell())
+            if DEBUG&16: log("reading at block %d, offset 0x%X (vpos=0x%X, epos=0x%X)", self._pos//self.block, offset, self._pos, self.stream.tell())
             if leftbytes <= size:
                 got=leftbytes
                 size-=leftbytes
@@ -468,7 +468,7 @@ class Image(object):
                 size=0
             self._pos += got
             if block == 0xFFFFFFFF:
-                if DEBUG&4: log("block content is virtual (zeroed)")
+                if DEBUG&16: log("block content is virtual (zeroed)")
                 buf+=bytearray(got)
                 continue
             self.stream.seek(block*512+self.bitmap_size+offset) # ignores bitmap sectors
@@ -487,7 +487,7 @@ class Image(object):
             offset = self._pos%512
             leftbytes = 512-offset
             block = self.bat[batind]
-            if DEBUG&4: log("%s: reading %d bytes at block %d, offset 0x%X (vpos=0x%X, epos=0x%X)", self.name, size, batind, offset, self._pos, self.stream.tell())
+            if DEBUG&16: log("%s: reading %d bytes at block %d, offset 0x%X (vpos=0x%X, epos=0x%X)", self.name, size, batind, offset, self._pos, self.stream.tell())
             if leftbytes <= size:
                 got=leftbytes
                 size-=leftbytes
@@ -501,18 +501,18 @@ class Image(object):
                     self.stream.seek(block*512)
                     bmp = BlockBitmap(self.stream.read(self.bitmap_size), block)
             if block == 0xFFFFFFFF or not bmp.isset(sector):
-                if DEBUG&4: log("reading %d bytes from parent", got)
+                if DEBUG&16: log("reading %d bytes from parent", got)
                 self.Parent.seek(self._pos-got)
                 buf += self.Parent.read(got)
             else:
-                if DEBUG&4: log("reading %d bytes", got)
+                if DEBUG&16: log("reading %d bytes", got)
                 self.stream.seek(block*512+self.bitmap_size+sector*512+offset)
                 buf += self.stream.read(got)
         return buf
 
     def write0(self, s):
         "Writes (Fixed image)"
-        if DEBUG&8: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
+        if DEBUG&16: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
         size = len(s)
         if not size: return
         self.stream.seek(self._pos)
@@ -521,7 +521,7 @@ class Image(object):
 
     def write(self, s):
         "Writes (Dynamic, non-Differencing image)"
-        if DEBUG&8: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
+        if DEBUG&16: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
         size = len(s)
         if not size: return
         i=0
@@ -540,25 +540,25 @@ class Image(object):
                 if s[i:i+put] == self.zero[:put]:
                     i+=put
                     self._pos+=put
-                    if DEBUG&4: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                    if DEBUG&16: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
                     continue
                 # allocates a new block at end before writing
                 self.stream.seek(-512, 2) # overwrites old footer
                 block = self.stream.tell()//512
                 self.bat[self._pos//self.block] = block
-                if DEBUG&4: log("allocating new block #%d @0x%X", self._pos//self.block, block*512)
+                if DEBUG&16: log("allocating new block #%d @0x%X", self._pos//self.block, block*512)
                 self.stream.write(self.bitmap_size*b'\xFF')
                 self.stream.seek(self.block, 1)
                 self.stream.write(self.footer.pack())
             self.stream.seek(block*512+self.bitmap_size+offset) # ignores bitmap sectors
-            if DEBUG&4: log("writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self._pos//self.block, offset, self._pos, i, i+put)
+            if DEBUG&16: log("writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self._pos//self.block, offset, self._pos, i, i+put)
             self.stream.write(s[i:i+put])
             i+=put
             self._pos+=put
 
     def write1(self, s):
         "Writes (Differencing image)"
-        if DEBUG&8: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
+        if DEBUG&16: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
         size = len(s)
         if not size: return
         i=0
@@ -578,13 +578,13 @@ class Image(object):
                 if s[i:i+put] == self.zero[:put]:
                     i+=put
                     self._pos+=put
-                    if DEBUG&4: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                    if DEBUG&16: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
                     continue
                 # allocates a new block at end before writing
                 self.stream.seek(-512, 2) # overwrites old footer
                 block = self.stream.tell()//512
                 self.bat[self._pos//self.block] = block
-                if DEBUG&4: log("%s: allocating new block #%d @0x%X", self.name, self._pos//self.block, block*512)
+                if DEBUG&16: log("%s: allocating new block #%d @0x%X", self.name, self._pos//self.block, block*512)
                 self.stream.write(bytearray(self.bitmap_size)) # all sectors initially zeroed and unused
                 self.stream.write(bytearray(self.block))
                 # instead of copying partial sectors from parent, we copy the full block
@@ -594,7 +594,7 @@ class Image(object):
                 self.stream.write(self.footer.pack())
             if not bmp or bmp.i != block:
                 if bmp: # commits bitmap
-                    if DEBUG&4: log("%s: flushing bitmap for block #%d before moving", self.name, bmp.i)
+                    if DEBUG&16: log("%s: flushing bitmap for block #%d before moving", self.name, bmp.i)
                     self.stream.seek(bmp.i*512)
                     self.stream.write(bmp.bmp)
                 self.stream.seek(block*512)
@@ -603,7 +603,7 @@ class Image(object):
                 self.Parent.seek((vpos//512)*512) # src sector offset
                 blk = self.bat[vpos//self.block]
                 offs = sec*512 # dest sector offset
-                if DEBUG&4: log("%s: copying parent sector @0x%X to 0x%X", self.name, self.Parent.tell(), blk*512+self.bitmap_size+offs)
+                if DEBUG&16: log("%s: copying parent sector @0x%X to 0x%X", self.name, self.Parent.tell(), blk*512+self.bitmap_size+offs)
                 self.stream.seek(blk*512+self.bitmap_size+offs)
                 self.stream.write(self.Parent.read(512))
             start = offset//512
@@ -616,11 +616,11 @@ class Image(object):
                 bmp.set(stop)
             bmp.set(start, stop-start+1) # sets the bitmap range corresponding to sectors written to
             self.stream.seek(block*512+self.bitmap_size+offset)
-            if DEBUG&4: log("%s: writing block #%d:0x%X (vpos=0x%X, epos=0x%X), buffer[0x%X:0x%X]", self.name, self._pos//self.block, offset, self._pos, self.stream.tell(), i, i+put)
+            if DEBUG&16: log("%s: writing block #%d:0x%X (vpos=0x%X, epos=0x%X), buffer[0x%X:0x%X]", self.name, self._pos//self.block, offset, self._pos, self.stream.tell(), i, i+put)
             self.stream.write(s[i:i+put])
             i+=put
             self._pos+=put
-        if DEBUG&4: log("%s: flushing bitmap for block #%d at end", self.name, bmp.i)
+        if DEBUG&16: log("%s: flushing bitmap for block #%d at end", self.name, bmp.i)
         self.stream.seek(bmp.i*512)
         self.stream.write(bmp.bmp)
 
@@ -669,9 +669,9 @@ def mk_fixed(name, size):
             size = f.tell()
         f.seek(size)
         f.truncate()
-        if DEBUG&4: log("making new Fixed VHD '%s' of %.02f MiB from pre-existant image", name, float(size//(1<<20)))
+        if DEBUG&16: log("making new Fixed VHD '%s' of %.02f MiB from pre-existant image", name, float(size//(1<<20)))
     else:
-        if DEBUG&4: log("making new Fixed VHD '%s' of %.02f MiB", name, float(size//(1<<20)))
+        if DEBUG&16: log("making new Fixed VHD '%s' of %.02f MiB", name, float(size//(1<<20)))
         f = myfile(name, 'wb')
         f.seek(size) # quickly allocates space
 
@@ -715,7 +715,7 @@ def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no'):
     ft.dwDiskType = 3
     ft.sUniqueId = uuid.uuid4().bytes
     
-    if DEBUG&4: log("making new Dynamic VHD '%s' of %.02f MiB with block of %d bytes", name, float(size//(1<<20)), block)
+    if DEBUG&16: log("making new Dynamic VHD '%s' of %.02f MiB with block of %d bytes", name, float(size//(1<<20)), block)
 
     f = myfile(name, 'wb')
     f.write(ft.pack()) # stores footer copy
@@ -734,7 +734,7 @@ def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no'):
     # for future VHD expansion
     if upto > size:
         bmpsize = max(512, 4*(upto//block))
-        if DEBUG&4: log("BAT extended to %d blocks, VHD is resizable up to %.02f MiB", bmpsize//4, float(upto//(1<<20)))
+        if DEBUG&16: log("BAT extended to %d blocks, VHD is resizable up to %.02f MiB", bmpsize//4, float(upto//(1<<20)))
     f.write(bmpsize*b'\xFF') # initializes BAT
     f.write(ft.pack()) # stores footer
     f.flush(); f.close()
@@ -756,7 +756,7 @@ def mk_diff(name, base, overwrite='no'):
     ima.footer.dwTimestamp = int(time.mktime(time.gmtime()))-946681200
     ima.footer.sUniqueId = uuid.uuid4().bytes
    
-    if DEBUG&4: log("making new Differencing VHD '%s' of %.02f MiB", name, float(ima.size//(1<<20)))
+    if DEBUG&16: log("making new Differencing VHD '%s' of %.02f MiB", name, float(ima.size//(1<<20)))
 
     f = myfile(name, 'wb')
     f.write(ima.footer.pack()) # stores footer copy

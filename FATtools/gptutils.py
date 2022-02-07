@@ -1,9 +1,9 @@
 # -*- coding: cp1252 -*-
 "Utilities to handle GPT partitions"
 
-import struct, uuid, zlib, ctypes
+import struct, uuid, zlib, ctypes, os
 
-DEBUG = 0
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 from FATtools.debug import log
 from FATtools import utils
 

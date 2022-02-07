@@ -13,13 +13,7 @@ from FATtools.debug import log
 from FATtools import Volume, mkfat, vdiutils, partutils
 import stress
 
-#~ Volume.DEBUG = 255
-#~ Volume.vhdutils.DEBUG = 255
-#~ Volume.partutils.DEBUG = 255
-#~ Volume.FAT.DEBUG = 255
-#~ Volume.exFAT.DEBUG = 255
 Volume.exFAT.hexdump = hexdump
-#~ Volume.disk.DEBUG=1
 
 def printn(s):
  print(s)

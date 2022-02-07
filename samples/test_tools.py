@@ -5,22 +5,17 @@ VHD_MODE = 0
 import os, sys, glob, ctypes, uuid, shutil, logging
 import hexdump
 
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
+
 logging.basicConfig(level=logging.DEBUG, filename='test_tools.log', filemode='w')
 
 from FATtools.debug import log
 from FATtools import Volume, mkfat, vhdutils, partutils
 import stress
-
-#~ Volume.DEBUG = 255
-#~ Volume.vhdutils.DEBUG = 255
-#~ Volume.partutils.DEBUG = 255
-#~ Volume.FAT.DEBUG = 255
-#~ Volume.exFAT.DEBUG = 255
 Volume.exFAT.hexdump = hexdump
-#~ Volume.disk.DEBUG=1
 
-def printn(s):
- print(s)
+
+def printn(s): print(s)
 
 def test(img_file, fssize=32<<20, fat_type='exfat'):
     VHD_MODE=0

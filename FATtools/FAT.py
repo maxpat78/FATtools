@@ -2,8 +2,6 @@
 # Utilities to manage a FAT12/16/32 file system
 #
 
-DEBUG=0
-
 import sys, copy, os, struct, time, io, atexit, functools
 from datetime import datetime
 from collections import OrderedDict
@@ -11,6 +9,7 @@ from zlib import crc32
 from FATtools import disk, utils
 from FATtools.debug import log
 
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 if DEBUG&4: import hexdump
 
 FS_ENCODING = sys.getfilesystemencoding()
@@ -963,8 +962,8 @@ class Handle(object):
         self.IsReadOnly = True # use this to prevent updating a Direntry on a read-only filesystem
         #~ atexit.register(self.close) # forces close() on exit if user didn't call it
 
-    def __del__ (self):
-        self.close()
+    #~ def __del__ (self):
+        #~ self.close()
 
     def update_time(self, i=0):
         cdate, ctime = FATDirentry.GetDosDateTime()
@@ -1011,9 +1010,11 @@ class Handle(object):
 
     def close(self):
         # 20170608: RE-DESIGN CAREFULLY THE FULL READ-ONLY MATTER!
-        if not self.IsValid or self.IsReadOnly:
-        #~ if not self.IsValid:
-            if DEBUG&8: log("Handle.close rejected %s (EINV ERDO)", self.File)
+        if not self.IsValid:
+            if DEBUG&4: log("Handle.close rejected %s (EINV)", self.File)
+            return
+        elif self.IsReadOnly:
+            if DEBUG&4: log("Handle.close rejected %s (ERDO)", self.File)
             return
 
         # Force setting the start cluster if allocated on write
@@ -1587,15 +1588,19 @@ class Dirtable(object):
     def flush(self):
         "Closes all open handles and commits changes to disk"
         if self.path != '.':
-            if DEBUG&1: log("Flushing dirtable for '%s'", self.path)
+            if DEBUG&4: log("Flushing dirtable for '%s'", self.path)
             dirs = {self.start: self.dirtable[self.start]}
         else:
-            if DEBUG&1: log("Flushing root dirtable")
+            if DEBUG&4: log("Flushing root dirtable")
             dirs = self.dirtable
             atexit.unregister(self.flush)
+        if not dirs:
+            if DEBUG&4: log("No directories to flush!")
         for i in dirs:
-            for h in self.dirtable[i]['Open']:
-               if DEBUG&1: log("Closing file handle for opened file '%s'", h)
+            if not self.dirtable[i]['Open']:
+                if DEBUG&4: log("No opened files!")
+            for h in copy.copy(self.dirtable[i]['Open']): # the original list gets shrinked
+               if DEBUG&4: log("Closing file handle for opened file '%s'", h.Entry.Name())
                h.close()
             h = self.dirtable[i]['Handle']
             if h:
@@ -1613,7 +1618,7 @@ class Dirtable(object):
             for k,v in sorted(M.items()):
                 while d.get(k+32*v): # while contig runs exist, merge
                     v1 = d.get(k+32*v)
-                    if DEBUG&8: log("Compacting map: {%d:%d} -> {%d:%d}", k,v,k,v+v1)
+                    if DEBUG&4: log("Compacting map: {%d:%d} -> {%d:%d}", k,v,k,v+v1)
                     d[k] = v+v1
                     del d[k+32*v]
                     #~ print "Compacted {%d:%d} -> {%d:%d}" %(k,v,k,v+v1)

@@ -2,13 +2,13 @@
 "Utilities to handle VHDX Log"
 
 import io, struct, uuid, zlib, ctypes, time, os, math
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 from FATtools.crc32c import crc_update
 from FATtools.utils import myfile
 
 import FATtools.utils as utils
 from FATtools.debug import log
 
-DEBUG = 0
 #~ import logging
 #~ logging.basicConfig(level=logging.DEBUG, filename='vhdxlog.log', filemode='w')
 

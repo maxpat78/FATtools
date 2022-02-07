@@ -1,4 +1,5 @@
 import struct, os, sys, pprint, math, importlib, locale, optparse
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 from FATtools import utils, partutils
 from FATtools.FAT import *
 from FATtools.exFAT import *

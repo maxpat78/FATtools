@@ -3,6 +3,8 @@ import io, os, sys, atexit
 from io import BytesIO
 from ctypes import *
 
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
+
 if os.name == 'nt':
     from ctypes.wintypes import *
     from FATtools.win32enumvols import dismount_all
@@ -10,9 +12,6 @@ if os.name == 'nt':
 from FATtools.debug import log
 from FATtools.utils import myfile
 #~ import hexdump
-
-DEBUG = 0
-
 
 
 class win32_disk(object):

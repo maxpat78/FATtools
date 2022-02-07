@@ -16,12 +16,11 @@ else:
 
 from FATtools.Volume import vopen, vclose
 
-DEBUG = 0
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
 if DEBUG:
     import logging
     logging.basicConfig(level=logging.DEBUG, filename='reorder_gui.log', filemode='w')
-    DEBUG = 2
 
 
 class ReorderableListbox(Listbox):
