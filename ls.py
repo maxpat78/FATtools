@@ -67,8 +67,9 @@ def _ls(v, filt, opts, depth=0):
                 mtime = datetime(*(it.ParseDosDate(it.wMDate) + it.ParseDosTime(it.wMTime)))
                 size = it.dwFileSize
             if opts.sort:
-                # 0=Name, 1=DIR?, 2=Size, 3=Date, 4=Ext
-                table += [(it.Name(), it.IsDir(), size, mtime, os.path.splitext(it.Name())[1].lower())]
+                name = it.Name()
+                # 0=Name, 1=DIR?, 2=Size, 3=Date, 4=Ext, 5=name
+                table += [(name, not it.IsDir(), size, mtime, os.path.splitext(name)[1].lower(), name.lower())]
                 continue
             _prn_line(it.Name(), mtime, (_fmt_size(size),'<DIR>   ')[it.IsDir()])
     if opts.sort:
@@ -76,7 +77,7 @@ def _ls(v, filt, opts, depth=0):
             if opts.bare:
                 print(it[0])
             else:
-                _prn_line(it[0], it[3], (_fmt_size(it[2]),'<DIR>   ')[it[1]])
+                _prn_line(it[0], it[3], (_fmt_size(it[2]),'<DIR>   ')[not it[1]])
     if not opts.bare:
         print("%18s Files    %s bytes" % (_fmt_size(tot_files), _fmt_size(tot_bytes)))
     if opts.recursive:
@@ -118,7 +119,7 @@ def ls(args, opts):
 
 
 if __name__ == '__main__':
-    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale())
+    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale()[0])
     
     help_s = """
     ls.py [-b -r -s NSDE-!] image.<vhd|vhdx|vdi|vmdk|img|bin|raw|dsk>[/path] ...
@@ -161,7 +162,7 @@ if __name__ == '__main__':
                 print("ls error: unknown sort method specified '%s'!"%c)
                 par.print_help()
                 sys.exit(1)
-            opts.sort += [{'N':0,'S':2,'D':3,'E':4}[c]]
+            opts.sort += [{'N':5,'S':2,'D':3,'E':4}[c]]
         if opts.sort_dirfirst:
             opts.sort.insert(0, 1)
         opts.sort = tuple(opts.sort)
