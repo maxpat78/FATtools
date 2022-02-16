@@ -13,6 +13,7 @@ DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 if DEBUG&4: import hexdump
 
 FS_ENCODING = sys.getfilesystemencoding()
+VFS_ENCODING = 'cp1252' # set here encoding to use in virtual FAT FS
 
 class FATException(Exception):
 	pass
@@ -1208,8 +1209,7 @@ class FATDirentry(Direntry):
         "Makes a human readable short name from slot's one"
         if DEBUG&4: log("GetShortName got %s:%d",shortname,chFlags)
         if type(shortname) != str:
-            #~ shortname = shortname.decode()
-            shortname = shortname.decode('ansi') # fix b'XXXXXX~1\xfaTH'
+            shortname = shortname.decode(VFS_ENCODING) # fix b'XXXXXX~1\xfaTH'
         name = shortname[:8].rstrip()
         if chFlags & 0x8: name = name.lower()
         ext = shortname[8:].rstrip()
