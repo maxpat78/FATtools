@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "FATtools"
+authors = [
+    {name = "maxpat78", email = "maxpat78@yahoo.it"},
+]
+description = "Pure python tools for accessing FAT filesystem images and disks"
+readme = "README.MD"
+requires-python = ">=3.5"
+keywords = ["FAT", "disk","image"]
+license = {text = "GPL"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = []
+dynamic=["version"]
+
+[tool.setuptools.dynamic]
+version = {attr = "FATtools.version.__version__"}
+
+[tool.setuptools]
+packages = ["FATtools"]
+
+[project.scripts]
+fattools = "FATtools.scripts.main:main"

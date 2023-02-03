@@ -1,5 +1,5 @@
 # FATtools3
-VERSION = '1.05'
+from .version import *
 
 COPYRIGHT = '''Copyright (C)2012-2022, by maxpat78. GNU GPL v3 applies.
 This free software manages (ex)FAT file systems and virtual disk images (VHD, VHDX, VDI, VMDK) WITH ABSOLUTELY NO WARRANTY!'''

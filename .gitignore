@@ -18,6 +18,12 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# python build files
+__pycache__
+*.egg-info
+dist
+
+
 # =========================
 # Operating System Files
 # =========================
