@@ -1,7 +1,7 @@
 FATtools3
 =========
 
-Manually install it under site-packages.
+Install using pip install .
 
 Born to re-sort directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
 
@@ -9,7 +9,7 @@ It is able to open disk partitioned with both MBR or GPT and to help in partitio
 It can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images.
 It can handle RAW disk images and BytesIO "RamDisk" images, also.
 
-Actually, following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not regularly tested):
+Following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not regularly tested):
 - sector aligned read/writes with both file images and real disks
 - sector based caching mechanism (for both reading and writing) to speed-up FAT and directory table operations
 - run length encoded map (with tuples and dictionaries) of free clusters, free directory slots, allocated cluster chains
@@ -25,9 +25,9 @@ Actually, following features are implemented (mostly in Python, with a few ctype
 
 The most fragile area (and, thus, subject to bugs) was the caching mechanism, that operates in different ways:
 - intercepting small I/O (<= 512 bytes), which is cached in a small circular buffer. Bigger I/O bypasses the cache; when the cache is full, all dirty sectors are committed to disk and the cache buffer is zeroed. Sectors and buffers are paired with Python builtin dictionaries: this permits a good (from a Pythonic perspective) I/O speed during FAT and directory tables access;
-- mantaining a dictionary of pre-decoded FAT indexes, to improve the speed of repetitive access to cluster chains;
-- mantaining a dictionary of short and long names (paired with their respective directory slots) for each directory table, to speed up searches and updates in directory tables;
-- mantaining a RLE map of free clusters, free directory slots and allocated cluster chains, to dramatically improve speed of allocation and file access. 
+- maintaining a dictionary of pre-decoded FAT indexes, to improve the speed of repetitive access to cluster chains;
+- maintaining a dictionary of short and long names (paired with their respective directory slots) for each directory table, to speed up searches and updates in directory tables;
+- maintaining a RLE map of free clusters, free directory slots and allocated cluster chains, to dramatically improve speed of allocation and file access. 
 
 *Actually, the I/O speed is closer to system's one.*
 
@@ -41,25 +41,27 @@ Code is GPLed (look at GPL.TXT inside folder).
 Sample usage (see inside 'test' directory for more samples).
 
 
-At a glance
+# At a glance
+
+The package installs a `fattools` script, you can use this to do simple command line operations. 
 
 - to create a dynamic 1TB VHD disk image with a single GPT partition and format it with exFAT from command line:
 ```
-py -m mkvdisk -s 1T image.vhd
-py -m mkfat -t exfat -p gpt image.vhd
+fattools mkvdisk -s 1T image.vhd
+fattools mkfat -t exfat -p gpt image.vhd
 ```
 
 - to create a differencing VDI disk image from command line:
 ```
-py -m mkvdisk -b image.vdi delta.vdi
+fattools mkvdisk -b image.vdi delta.vdi
 ```
 
 - to list contents in a disk image, copy items to/from it and erase them (command line, too):
 ```
-py -m ls image1.vhd/py* image2.vdi/py*
-py -m cp C:\Python39\Lib\site-packages image.vhd/Python39/Lib
-py -m cp image.vhd/Python39 C:\ProgramData
-py -m rm image.vhd/Python39
+fattools ls image1.vhd/py* image2.vdi/py*
+fattools cp C:\Python39\Lib\site-packages image.vhd/Python39/Lib
+fattools cp image.vhd/Python39 C:\ProgramData
+fattools rm image.vhd/Python39
 ```
 
 - to open an existing plain or VHD disk image, or real disk:
