@@ -117,23 +117,22 @@ def ls(args, opts):
         _ls(v, filt, opts)
 
 
-
-if __name__ == '__main__':
-    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale()[0])
-    
+def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=None):
     help_s = """
-    ls.py [-b -r -s NSDE-!] image.<vhd|vhdx|vdi|vmdk|img|bin|raw|dsk>[/path] ...
+    fattools ls [-b -r -s NSDE-!] image.<vhd|vhdx|vdi|vmdk|img|bin|raw|dsk>[/path] ...
+
     """
-    par = argparse.ArgumentParser(usage=help_s,
+    par = parser_create_fn(*parser_create_args,usage=help_s,
     formatter_class=argparse.RawDescriptionHelpFormatter,
     description="Lists files and directories in a supported virtual disk image.\nWildcards accepted.",
-    epilog="Examples:\nls.py image.vhd\nls.py image.vhd/*.exe image.vhd/python39/dlls/*.pyd\n")
-    par.add_argument('items', nargs='*')
+    epilog="Examples:\nfattools ls image.vhd\nfattools ls image.vhd/*.exe image.vhd/python39/dlls/*.pyd\n")
+    par.add_argument('items', nargs='+')
     par.add_argument('-b', help='prints items names only', dest='bare', action="count", default=0)
     par.add_argument('-r', help='recursive (descends into subdirectories)', dest='recursive', action="count", default=0)
     par.add_argument('-s', help='sorts by name/size/date/ext (N/S/D/E), - (reverse order), ! (directories first)', dest='sort', type=str, default='')
-    args = par.parse_args()
+    return par
 
+def call(args):
     if len(args.items) < 1:
         print("ls error: you must specify at least one path to list!")
         par.print_help()
@@ -168,3 +167,11 @@ if __name__ == '__main__':
         opts.sort = tuple(opts.sort)
 
     ls(args.items, opts)
+
+
+if __name__ == '__main__':
+    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale()[0])
+    
+    par = create_parser()
+    args = par.parse_args()
+    call(args)

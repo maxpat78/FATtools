@@ -65,22 +65,26 @@ def rm(args):
         else:
             _rm(v, [path])
 
-
-
-if __name__ == '__main__':
+def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=None):
     help_s = """
     rm.py <file1 or dir1> [file2 or dir2...]
     """
-    par = argparse.ArgumentParser(usage=help_s,
+    par = parser_create_fn(*parser_create_args, usage=help_s,
     formatter_class=argparse.RawDescriptionHelpFormatter,
     description="Removes items from virtual volumes. Wildcards accepted.",
     epilog="Examples:\nrm.py image.vhd/texts/*.txt image.vhd/Dir1\n")
-    par.add_argument('items', nargs='*')
-    args = par.parse_args()
+    par.add_argument('items', nargs='+')
+    return par
 
+def call(args):
     if len(args.items) < 1:
         print("rm error: you must specify at least one item to remove!")
         par.print_help()
         sys.exit(1)
-    
+
     rm(args.items)
+    
+if __name__ == '__main__':
+    par = create_parser()
+    args = par.parse_args()
+    call(args)

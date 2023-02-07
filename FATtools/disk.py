@@ -7,7 +7,7 @@ DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
 if os.name == 'nt':
     from ctypes.wintypes import *
-    from FATtools.win32enumvols import dismount_all
+    from FATtools.win32enumvols import dismount_and_lock_all,unlock_volume_handles
 
 from FATtools.debug import log
 from FATtools.utils import myfile
@@ -25,8 +25,9 @@ class win32_disk(object):
         status = c_int(0)
         name = name.lower()
         # First try to unmount volumes belonging to a given \\.\PhysicalDriveN
+        self.volume_handles=[]
         if 'physicaldrive' in name and mode != 'rb':
-            dismount_all(bytes(name,'ascii'))
+            self.volume_handles=dismount_and_lock_all(bytes(name,'ascii'))
         # Open a new write handle
         if name in win32_disk.open_handles:
             handle = win32_disk.open_handles[name]
@@ -43,7 +44,7 @@ class win32_disk(object):
         # Suggest: open NON-CACHED
         #  To read or write to the last few sectors of the volume, you must call DeviceIoControl and specify FSCTL_ALLOW_EXTENDED_DASD_IO
         ioctls ={0x90020:'FSCTL_DISMOUNT_VOLUME', 0x90018:'FSCTL_LOCK_VOLUME', 0x90083: 'FSCTL_ALLOW_EXTENDED_DASD_IO'}
-        for ioctl in (0x90020, 0x90018):
+        for ioctl in (0x90020, 0x90083):
             if windll.kernel32.DeviceIoControl(handle, DWORD(ioctl), 0, DWORD(0), 0, DWORD(0), byref(status), 0):
                 # 5 = ACCESS DENIED 6= INVALID HANDLE
                 if GetLastError():
@@ -60,6 +61,8 @@ class win32_disk(object):
         self._pos = 0
         
     def close(self):
+        unlock_volume_handles(self.volume_handles)
+        self.volume_handles=[]
         self.closed = True
         if self.name in win32_disk.open_handles:
             windll.kernel32.CloseHandle(self.handle)

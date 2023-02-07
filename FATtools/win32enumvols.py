@@ -75,8 +75,9 @@ def enum_nt_volumes():
     windll.kernel32.FindVolumeClose(hffv)
     return volumes, paths
 
-def dismount_all(device):
+def dismount_and_lock_all(device):
     "Dismounts all children volumes mounted on a device, allowing writes everywhere on it"
+    return_handles=[]
     volumes, paths = enum_nt_volumes()
     if not volumes:
         if DEBUG&1: log('enum_nt_volumes did not find volumes to dismount!')
@@ -90,20 +91,33 @@ def dismount_all(device):
                 if DEBUG&1: log('Volume "%s" still mounted on device "%s", write operations might fail!', volume, device)
                 continue
             #~ ioctls = {0x90020: 'FSCTL_DISMOUNT_VOLUME', 0x56C00C:'IOCTL_VOLUME_OFFLINE'}
-            ioctls = {0x90020: 'FSCTL_DISMOUNT_VOLUME'} # Bug? IOCTL_VOLUME_OFFLINE puts offline the entire disk!
+            ioctls = {0x90020: 'FSCTL_DISMOUNT_VOLUME',0x90018:'FSCTL_LOCK_VOLUME'}
             status = c_int(0)
             for ioctl in ioctls:
                 vpath = b'no mountpoint'
                 if volume in paths:
                     vpath = paths[volume]
-                # Note: deleting the drive letter inhibits Windows from auto-remounting
-                #~ if volume in paths:
-                    #~ if not windll.kernel32.DeleteVolumeMountPointA(paths[volume]):
-                        #~ print ('Note: volume mount point "%s" not deleted' % paths[volume])
-                if windll.kernel32.DeviceIoControl(h, DWORD(ioctl), 0, DWORD(0), 0, DWORD(0), byref(status), 0):
-                    # 5 = ACCESS DENIED 6= INVALID HANDLE
-                    if GetLastError():
-                        raise BaseException('DeviceIoControl %s failed with code %d (%s)' % (ioctls[ioctl], GetLastError(), FormatError()))
+                locked=False
+                # sometimes locking the volumes fails if it is done immediately after dismounting
+                # so retry it
+                for retries in range(20):
+                    if windll.kernel32.DeviceIoControl(h, DWORD(ioctl), 0, DWORD(0), 0, DWORD(0), byref(status), 0):
+                        err=GetLastError()
+                        if err==21:
+                            time.sleep(1)
+                            print("Retry locking")
+                            continue
+                        if err:
+                            raise BaseException('DeviceIoControl %s failed with code %d (%s)' % (ioctls[ioctl], err, FormatError()))
+                    locked=True
+                    break
+                if not locked:
+                    raise BaseException('Locking drive %s (%s) timed out' % (volume.decode(),vpath.decode()))                
             print ('Note: volume "%s" (%s) on %s dismounted.' % (volume.decode(),vpath.decode(),device.decode()))
             if DEBUG&1: log('Volume "%s" (%s) on %s dismounted.', volume.decode(), vpath.decode(), device.decode())
-            windll.kernel32.CloseHandle(h) # closing the handle allows Windows to auto re-mount?
+            return_handles.append(h)
+    return return_handles
+
+def unlock_volume_handles(handles):
+    for h in handles:
+        windll.kernel32.CloseHandle(h)

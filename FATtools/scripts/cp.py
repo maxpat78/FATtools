@@ -44,19 +44,18 @@ def cp(srcs_list, dest):
 
 def printn(s): print(s)
 
-
-
-if __name__ == '__main__':
+def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=None):
     help_s = """
-    cp.py <file1 or dir1> [file2 or dir2...] <destination>
+    fattools cp <file1 or dir1> [file2 or dir2...] <destination>
     """
-    par = argparse.ArgumentParser(usage=help_s,
+    par = parser_create_fn(*parser_create_args,usage=help_s,
     formatter_class=argparse.RawDescriptionHelpFormatter,
     description="Copies items between real and virtual volumes. Wildcards accepted.\nCopy between virtual disk images is not supported yet.",
-    epilog="Examples:\ncp.py File1.txt File2.txt Dir1 image.vhd\ncp.py File*.txt Dir? image.vhd/Subdir\ncp.py image.vhd\\*.py image.vhd/Subdir1 C:\\MyDir\ncp.py image.vhdx/Readme.txt Leggimi.txt")
-    par.add_argument('items', nargs='*')
-    args = par.parse_args()
+    epilog="Examples:\nfattools cp File1.txt File2.txt Dir1 image.vhd\nfattools cp File*.txt Dir? image.vhd/Subdir\nfattools cp image.vhd\\*.py image.vhd/Subdir1 C:\\MyDir\nfattools cp image.vhdx/Readme.txt Leggimi.txt")
+    par.add_argument('items', nargs='+')
+    return par
 
+def call(args):
     if len(args.items) < 2:
         print("copy error: you must specify at least one source and the destination!")
         par.print_help()
@@ -64,3 +63,9 @@ if __name__ == '__main__':
 
     dest = args.items.pop()
     cp(args.items, dest)
+
+if __name__ == '__main__':
+    par=create_parser()
+    args = par.parse_args()
+    call(args)
+
