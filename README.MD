@@ -31,32 +31,32 @@ The most fragile area (and, thus, subject to bugs) was the caching mechanism, th
 
 *Actually, the I/O speed is closer to system's one.*
 
-Code is GPLed (look at GPL.TXT inside folder).
+Code is GPLed (look at GPL.TXT).
 
 
 [1] VHDX Log support is actually limited to replaying capability.
 
 
 
-Sample usage (see inside 'test' directory for more samples).
+Sample usage (see inside 'samples' directory for more usage samples).
 
 
 # At a glance
 
-The package installs a `fattools` script, you can use this to do simple command line operations. 
+The package installs a `fattools` script, you can use this to perform simple command line operations. 
 
-- to create a dynamic 1TB VHD disk image with a single GPT partition and format it with exFAT from command line:
+- to create a dynamic 1TB VHD disk image with a single GPT partition and format it with exFAT:
 ```
 fattools mkvdisk -s 1T image.vhd
 fattools mkfat -t exfat -p gpt image.vhd
 ```
 
-- to create a differencing VDI disk image from command line:
+- to create a differencing VDI disk image:
 ```
 fattools mkvdisk -b image.vdi delta.vdi
 ```
 
-- to list contents in a disk image, copy items to/from it and erase them (command line, too):
+- to list contents in a disk image, copy items to/from it and erase them:
 ```
 fattools ls image1.vhd/py* image2.vdi/py*
 fattools cp C:\Python39\Lib\site-packages image.vhd/Python39/Lib
