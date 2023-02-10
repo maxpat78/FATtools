@@ -1,13 +1,14 @@
-FATtools3
-=========
+FATtools
+========
 
 Install using pip install .
 
 Born to re-sort directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
 
-It is able to open disk partitioned with both MBR or GPT and to help in partitioning.
-It can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images.
-It can handle RAW disk images and BytesIO "RamDisk" images, also.
+Moreover:
+- it is able to open disk partitioned with both MBR or GPT and to help in partitioning
+- it can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images
+- it can handle RAW disk images and BytesIO "RamDisk" images, also.
 
 Following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not regularly tested):
 - sector aligned read/writes with both file images and real disks
@@ -43,7 +44,7 @@ Sample usage (see inside 'samples' directory for more usage samples).
 
 # At a glance
 
-The package installs a `fattools` script, you can use this to perform simple command line operations. 
+The package installs a `fattools` script, you can use this to perform simple command line operations.
 
 - to create a dynamic 1TB VHD disk image with a single GPT partition and format it with exFAT:
 ```
@@ -56,11 +57,12 @@ fattools mkfat -t exfat -p gpt image.vhd
 fattools mkvdisk -b image.vdi delta.vdi
 ```
 
-- to list contents in a disk image, copy items to/from it and erase them:
+- to list contents in a disk image, copy items to/from it, display and erase them:
 ```
 fattools ls image1.vhd/py* image2.vdi/py*
 fattools cp C:\Python39\Lib\site-packages image.vhd/Python39/Lib
 fattools cp image.vhd/Python39 C:\ProgramData
+fattools cat image.vhd/readme.txt
 fattools rm image.vhd/Python39
 ```
 
@@ -84,7 +86,12 @@ part = Volume.vopen('MyDiskImage.img', 'r+b', 'partition0')
 mkfat.exfat_mkfs(part, part.size)
 ```
 
-- to order root directory table in USB drive X:
+- to order root directory table in USB drive X (easily, with GUI):
+```
+fattools reordergui
+```
+
+- to order root directory table in USB drive X (scripting):
 ```
 # -*- coding: cp1252 -*-
 from FATtools.Volume import *
