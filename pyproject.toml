@@ -17,8 +17,10 @@ classifiers = [
     'Intended Audience :: Developers',
     'Intended Audience :: System Administrators',
     'Environment :: Win32 (MS Windows)',
-    'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',  
-    'Topic :: System :: Filesystems',
+    'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+    'Operating System :: Microsoft :: Windows',
+    'Operating System :: POSIX :: Linux',
+    'Topic :: System :: Filesystems'
 ]
 dependencies = ["hexdump"]
 dynamic=["version"]
@@ -27,11 +29,11 @@ dynamic=["version"]
 homepage = "https://github.com/maxpat78/FATtools"
 repository = "https://github.com/maxpat78/FATtools.git"
 
-[tool.setuptools.dynamic]
-version = {attr = "FATtools.version.__version__"}
-
 [tool.setuptools]
 packages = ["FATtools", "FATtools.scripts"]
+
+[tool.setuptools.dynamic]
+version = {attr = "FATtools.version.__version__"}
 
 [project.scripts]
 fattools = "FATtools.scripts.main:main"

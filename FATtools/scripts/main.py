@@ -1,19 +1,23 @@
-import argparse
-import importlib
-
+import argparse,importlib,sys
 
 
 def main():
-    help_s = """
-    fattools
-    """
+    scripts=["cat","cp","ls","mkfat","mkvdisk","rm","reordergui"]
+    help_s="Usage: fattools " + ''.join( ['%s|'%s for s in scripts])[:-1]
+
+    if len(sys.argv) < 2:
+        print("You must specify a command to perform!\n\n" + help_s)
+        sys.exit(1)
+        
+    if sys.argv[1] not in scripts:
+        print("Bad command specified!\n\n" + help_s)
+        sys.exit(1)
+    
     par=argparse.ArgumentParser(usage=help_s)
     subparsers=par.add_subparsers(help="command to perform")
-    scripts=["cp","ls","mkfat","mkvdisk","rm"]
     for x in scripts:
         mod=importlib.import_module("FATtools.scripts.%s"%x)
         subpar=mod.create_parser(subparsers.add_parser,[x])
         subpar.set_defaults(func=mod.call)
-    
-    args = par.parse_args()
+    args=par.parse_args()
     args.func(args)

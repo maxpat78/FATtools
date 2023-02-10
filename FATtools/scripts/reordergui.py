@@ -5,7 +5,7 @@ Visually alters a FAT/FAT32 directory table order.
 Very useful with micro Hi-Fi supporting USB keys but low of memory and bad
 in browsing."""
 
-import sys, os
+import sys, os, argparse
 
 if sys.version_info >= (3,0): 
     from tkinter import *
@@ -269,5 +269,18 @@ class Manipulator(Tk):
 - press 'Apply' to write the newly ordered table back to the disk
 - use 'Quit' when done''')
 
-root = Manipulator()
-root.mainloop()
+def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=None):
+    help_s = """
+    reordergui.py
+    """
+    par = parser_create_fn(*parser_create_args, usage=help_s,
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Displays a GUI to help ordering a directory table.")
+    return par
+
+def call(args):
+    root = Manipulator()
+    root.mainloop()
+    
+if __name__ == '__main__':
+    call(None)

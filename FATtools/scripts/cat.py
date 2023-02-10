@@ -7,34 +7,20 @@ from FATtools.debug import log
 
 DEBUG = 0
 
-#~ logging.basicConfig(level=logging.DEBUG, filename='rm.log', filemode='w')
+#~ logging.basicConfig(level=logging.DEBUG, filename='cat.log', filemode='w')
 
 
-def _rm(v, args):
+def _cat(v, args):
     for it in args:
-        is_file = 1
+        chomp = 1
         fp = v.open(it)
-        if not fp.IsValid:
-            # if existent but invalid, it is a dir
-            if DEBUG&2: log("rm: probing '%s' as directory", it)
-            is_file = 0
-            fp = v.opendir(it)
-            if not fp:
-                if DEBUG&2: log("rm: '%s' does not exist", it)
-                print('"%s" does not exist!'%it)
-                continue
-        if is_file:
-            print("Erasing file %s" % it)
-            r = v.erase(it)
-            if DEBUG&2: log("rm: erase('%s') returned %d", it, r)
-        else:
-            print("Erasing directory %s..." % it)
-            r = v.rmtree(it)
-            if DEBUG&2: log("rm: rmtree('%s') returned %d", it, r)
+        while chomp:
+            s = fp.read(16<<10) # read in 16K chunk
+            if not s: break
+            sys.stdout.buffer.write(s)
 
 
-
-def rm(args):
+def cat(args):
     for arg in args:
         filt = None # wildcard filter
         img = is_vdisk(arg) # image to open
@@ -60,28 +46,28 @@ def rm(args):
             if not todo:
                 print('No matches for', filt)
             else:
-                _rm(v, todo)
+                _cat(v, todo)
         else:
-            _rm(v, [path])
+            _cat(v, [path])
 
 def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=None):
     help_s = """
-    rm.py <file1 or dir1> [file2 or dir2...]
+    cat.py file1 [file2 ...]
     """
     par = parser_create_fn(*parser_create_args, usage=help_s,
     formatter_class=argparse.RawDescriptionHelpFormatter,
-    description="Removes items from virtual volumes. Wildcards accepted.",
-    epilog="Examples:\nrm.py image.vhd/texts/*.txt image.vhd/Dir1\n")
+    description="Reads data from one or more files and outputs their contents.",
+    epilog="Examples:\ncat.py image.vhd/readme.txt\ncat.py image.vhd/readme.bz2 | bzip2 -d\n")
     par.add_argument('items', nargs='+')
     return par
 
 def call(args):
     if len(args.items) < 1:
-        print("rm error: you must specify at least one item to remove!")
+        print("cat error: you must specify at least one item to read!")
         par.print_help()
         sys.exit(1)
 
-    rm(args.items)
+    cat(args.items)
     
 if __name__ == '__main__':
     par = create_parser()
