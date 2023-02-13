@@ -23,7 +23,8 @@ def _cat(v, args):
 def cat(args):
     for arg in args:
         filt = None # wildcard filter
-        img = is_vdisk(arg) # image to open
+        img = is_vdisk(arg) # object to open
+        if not img: img = arg
         path = arg[len(img)+1:] # eventual path inside it
         v = Volume.vopen(img, 'rb+')
         # wildcard? expand src list with matching items

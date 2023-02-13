@@ -86,7 +86,7 @@ part = Volume.vopen('MyDiskImage.img', 'r+b', 'partition0')
 mkfat.exfat_mkfs(part, part.size)
 ```
 
-- to order root directory table in USB drive X (easily, with GUI):
+- to order items inside directory tables easily, with GUI:
 ```
 fattools reordergui
 ```

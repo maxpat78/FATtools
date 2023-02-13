@@ -37,7 +37,8 @@ def _rm(v, args):
 def rm(args):
     for arg in args:
         filt = None # wildcard filter
-        img = is_vdisk(arg) # image to open
+        img = is_vdisk(arg) # object to open
+        if not img: img = arg
         path = arg[len(img)+1:] # eventual path inside it
         v = Volume.vopen(img, 'rb+')
         # wildcard? expand src list with matching items
@@ -70,7 +71,7 @@ def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=No
     """
     par = parser_create_fn(*parser_create_args, usage=help_s,
     formatter_class=argparse.RawDescriptionHelpFormatter,
-    description="Removes items from virtual volumes. Wildcards accepted.",
+    description="Removes items from supported disk or images. Wildcards accepted.",
     epilog="Examples:\nrm.py image.vhd/texts/*.txt image.vhd/Dir1\n")
     par.add_argument('items', nargs='+')
     return par

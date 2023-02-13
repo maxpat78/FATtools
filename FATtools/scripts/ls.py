@@ -99,7 +99,8 @@ def ls(args, opts):
     "Simple, DOS style directory listing, with size and last modification time"
     for arg in args:
         filt = None # wildcard filter
-        img = is_vdisk(arg) # image to open
+        img = is_vdisk(arg) # object to open
+        if not img: img = arg
         path = arg[len(img)+1:] # eventual path inside it
         v = Volume.vopen(img)
         # wildcard? expand src list with matching items
@@ -124,7 +125,7 @@ def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=No
     """
     par = parser_create_fn(*parser_create_args,usage=help_s,
     formatter_class=argparse.RawDescriptionHelpFormatter,
-    description="Lists files and directories in a supported virtual disk image.\nWildcards accepted.",
+    description="Lists files and directories in a supported disk or image.\nWildcards accepted.",
     epilog="Examples:\nfattools ls image.vhd\nfattools ls image.vhd/*.exe image.vhd/python39/dlls/*.pyd\n")
     par.add_argument('items', nargs='+')
     par.add_argument('-b', help='prints items names only', dest='bare', action="count", default=0)
