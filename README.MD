@@ -1,7 +1,7 @@
 FATtools
 ========
 
-Install using pip install .
+Install from PyPI using `pip install FATtools` (easier) or downloading the source code (or the released packages) from here.
 
 Born to re-sort directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
 
@@ -37,9 +37,6 @@ Code is GPLed (look at GPL.TXT).
 
 [1] VHDX Log support is actually limited to replaying capability.
 
-
-
-Sample usage (see inside 'samples' directory for more usage samples).
 
 
 # At a glance
@@ -86,7 +83,7 @@ part = Volume.vopen('MyDiskImage.img', 'r+b', 'partition0')
 mkfat.exfat_mkfs(part, part.size)
 ```
 
-- to order items inside directory tables easily, with GUI:
+- to order items inside directory tables easily, with GUI and drag support:
 ```
 fattools reordergui
 ```
@@ -171,3 +168,5 @@ for t in T:
 o.sort()
 vclose(o)
 ```
+
+Please look inside 'samples' directory for more usage samples.

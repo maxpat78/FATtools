@@ -660,8 +660,11 @@ def mk_crc(s):
     return struct.pack('>i', ~crc)
 
 
-def mk_fixed(name, size):
+def mk_fixed(name, size, overwrite='no'):
     "Creates an empty fixed VHD or transforms a previous image if 'size' is -1"
+    if os.path.exists(name):
+        if size != -1 and overwrite!='yes':
+            raise BaseException("Can't silently overwrite a pre-existing VHD image!")
     if os.path.exists(name):
         f = myfile(name, 'r+b')
         if size == -1:

@@ -8,6 +8,7 @@ def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=No
     par.add_argument('image_file',help="The image file or disk device to write to",metavar="IMAGE_FILE")
     par.add_argument("-s", "--size", dest="image_size", help="specify virtual disk size. K, M, G or T suffixes accepted", metavar="SIZE",required=True)
     par.add_argument("-b", "--base", dest="base_image", help="specify a virtual disk image base to create a differencing image with default parameters", metavar="BASE")
+    par.add_argument("-m", "--monolithic", dest="monolithic", help="immediately allocates all image sectors (except for VMDK)", action="store_true", default=False)
     par.add_argument("-f", "--force", dest="force", help="overwrites a pre-existing image", action="store_true", default=False)
     return par
 
@@ -60,7 +61,11 @@ def call(args):
     else:
         fmt = vmdkutils
 
-    fmt.mk_dynamic(args.image_file, fssize, overwrite='yes')
+    if not args.monolithic or fmt == vmdkutils:
+        fmt.mk_dynamic(args.image_file, fssize, overwrite='yes')
+    else:
+        fmt.mk_fixed(args.image_file, fssize, overwrite='yes')
+
     print("Virtual disk image '%s' created."%args.image_file)
 
 if __name__ == '__main__':
