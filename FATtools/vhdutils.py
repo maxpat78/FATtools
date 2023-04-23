@@ -540,7 +540,7 @@ class Image(object):
                 if s[i:i+put] == self.zero[:put]:
                     i+=put
                     self._pos+=put
-                    if DEBUG&16: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.dwBlocksOffset)
+                    if DEBUG&16: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.u64DataOffset)
                     continue
                 # allocates a new block at end before writing
                 self.stream.seek(-512, 2) # overwrites old footer

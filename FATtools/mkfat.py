@@ -118,8 +118,9 @@ def fat12_mkfs(stream, size, sector=512, params={}):
     boot.chPhysDriveNumber = 0
     boot.uchSignature = 0x29
     boot.wBootSignature = 0xAA55
-    boot.wSectorsPerTrack = 18
-    boot.wHeads = 2
+    boot.wSectorsPerTrack = 18 # CAVE! This is true with floppies, not little HDDs (20MB, 120MB etc.)
+    #~ boot.wHeads = 2
+    boot.wHeads = partutils.size2chs(size,1)[1] # not used with LBA
 
     boot.pack()
     #~ print boot
@@ -277,7 +278,7 @@ def fat16_mkfs(stream, size, sector=512, params={}):
     boot.uchSignature = 0x29
     boot.wBootSignature = 0xAA55
     boot.wSectorsPerTrack = 63 # not used w/o disk geometry!
-    boot.wHeads = partutils.size2chs(size)[1] # not used with LBA
+    boot.wHeads = partutils.size2chs(size,1)[1] # not used with LBA
 
     boot.pack()
     #~ print boot

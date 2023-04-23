@@ -59,7 +59,7 @@ def lba2chs(lba, hpc=0):
 
 def size2chs(n, getgeometry=0):
     lba = n//512
-    for hpc in (16,32,64,128,255):
+    for hpc in (2,16,32,64,128,255): # 2 is typical for 720K DS/DD and 1.44M DS/HD floppies
         c,h,s = lba2chs(lba,hpc)
         if c < 1024: break
     if DEBUG&1: log("size2chs: calculated Heads Per Cylinder: %d", hpc)
