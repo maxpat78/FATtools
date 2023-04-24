@@ -59,7 +59,27 @@ def lba2chs(lba, hpc=0):
 
 def size2chs(n, getgeometry=0):
     lba = n//512
-    for hpc in (2,16,32,64,128,255): # 2 is typical for 720K DS/DD and 1.44M DS/HD floppies
+    
+    # Avoid computations with some well-known IBM PC floppy formats
+    # Look at: https://en.wikipedia.org/wiki/List_of_floppy_disk_formats#Logical_formats
+    if lba == 640:
+        return (80, 1, 8) # 3.5in DS/DD 320KB
+    elif lba == 720:
+        return (80, 1, 9) # 3.5in DS/DD 360KB
+    elif lba == 1280:
+        return (80, 2, 8) # 3.5in DS/DD 640KB
+    elif lba == 1440:
+        return (80, 2, 9) # 3.5in DS/DD 720KB
+    elif lba == 2880:
+        return (80, 2, 18) # 3.5in DS/HD 1440KB
+    elif lba == 3360:
+        return (80, 2, 21) # 3.5in DS/HD 1680KB (MS-DMF)
+    elif lba == 3440:
+        return (82, 2, 21) # 3.5in DS/HD 1720KB
+    elif lba == 5760:
+        return (80, 2, 36) # 3.5in DS/XD 2880KB
+
+    for hpc in (2,16,32,64,128,255):
         c,h,s = lba2chs(lba,hpc)
         if c < 1024: break
     if DEBUG&1: log("size2chs: calculated Heads Per Cylinder: %d", hpc)

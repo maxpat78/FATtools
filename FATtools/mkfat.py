@@ -118,9 +118,10 @@ def fat12_mkfs(stream, size, sector=512, params={}):
     boot.chPhysDriveNumber = 0
     boot.uchSignature = 0x29
     boot.wBootSignature = 0xAA55
-    boot.wSectorsPerTrack = 18 # CAVE! This is true with floppies, not little HDDs (20MB, 120MB etc.)
-    #~ boot.wHeads = 2
-    boot.wHeads = partutils.size2chs(size,1)[1] # not used with LBA
+    c,h,s = partutils.size2chs(size,1)
+    if DEBUG&1: log("fat12_mkfs C=%d, H=%d, S=%d", c, h, s)
+    boot.wSectorsPerTrack = s
+    boot.wHeads = h # not used with LBA
 
     boot.pack()
     #~ print boot
@@ -277,8 +278,10 @@ def fat16_mkfs(stream, size, sector=512, params={}):
     boot.chPhysDriveNumber = 0x80
     boot.uchSignature = 0x29
     boot.wBootSignature = 0xAA55
-    boot.wSectorsPerTrack = 63 # not used w/o disk geometry!
-    boot.wHeads = partutils.size2chs(size,1)[1] # not used with LBA
+    c,h,s = partutils.size2chs(size,1)
+    if DEBUG&1: log("fat16_mkfs C=%d, H=%d, S=%d", c, h, s)
+    boot.wSectorsPerTrack = s
+    boot.wHeads = h # not used with LBA
 
     boot.pack()
     #~ print boot
@@ -448,8 +451,10 @@ def fat32_mkfs(stream, size, sector=512, params={}):
     boot.chPhysDriveNumber = 0x80
     boot.chExtBootSignature = 0x29
     boot.wBootSignature = 0xAA55
-    boot.wSectorsPerTrack = 63 # not used w/o disk geometry!
-    boot.wHeads = partutils.size2chs(size,1)[1] # not used with LBA
+    c,h,s = partutils.size2chs(size,1)
+    if DEBUG&1: log("fat32_mkfs C=%d, H=%d, S=%d", c, h, s)
+    boot.wSectorsPerTrack = s
+    boot.wHeads = h # not used with LBA
 
     fsi = fat32_fsinfo(offset=sector)
     fsi.sSignature1 = b'RRaA'
