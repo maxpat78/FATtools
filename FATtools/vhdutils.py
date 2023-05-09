@@ -7,7 +7,7 @@ appended.
 
 A DYNAMIC VHD initially contains only the VHD footer in the last sector and
 a copy of it in the first, a dynamic disk header in second and third sector
-followed by the BAT (Blocks Allocation Table).
+followed by one or more sectors with the BAT (Blocks Allocation Table).
 Disk is virtually subdivided into blocks of equal size (2 MiB default) with a
 corresponding 32-bit BAT index showing the 512-byte sector where the block
 resides in VHD file.
@@ -247,6 +247,11 @@ class BAT(object):
                 self.isvalid = -4 # block address not aligned
                 if selftest: break
                 print("ERROR: BAT[%d] offset (sector %X) is not aligned, overlapping blocks" %(i, a))
+            if a*512 > last_block or a*512+raw_size > (ssize-512):
+                if DEBUG&16: log("%s: block %d offset (sector %X) overlaps Footer", self, i, a)
+                self.isvalid = -5
+                if selftest: break
+                print("ERROR: BAT[%d] offset (sector %X) overlaps Footer" %(i, a))
             seen += [a]
 
         # Neither Windows 10 nor VHDDump detects this case
@@ -732,11 +737,11 @@ def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no'):
     h.dwBlockSize = block
     
     f.write(h.pack()) # stores dynamic header
-    bmpsize = max(512, 4*(size//block))
+    bmpsize = (4*(size//block)+511)//512*512 # must span full sectors
     # Given a maximum virtual size in upto, the BAT is enlarged
     # for future VHD expansion
     if upto > size:
-        bmpsize = max(512, 4*(upto//block))
+        bmpsize = (4*(upto//block)+511)//512*512
         if DEBUG&16: log("BAT extended to %d blocks, VHD is resizable up to %.02f MiB", bmpsize//4, float(upto//(1<<20)))
     f.write(bmpsize*b'\xFF') # initializes BAT
     f.write(ft.pack()) # stores footer
@@ -781,7 +786,7 @@ def mk_diff(name, base, overwrite='no'):
         loc[i].dwPlatformDataLength = 0
         loc[i].dwPlatformDataOffset = 0
 
-    bmpsize=((ima.header.dwMaxTableEntries*4+512)//512)*512
+    bmpsize=((ima.header.dwMaxTableEntries*4+511)//512)*512
 
     # Windows 10 stores the relative pathname with '.\' for current dir
     # It stores both absolute and relative pathnames, tough it isn't
