@@ -336,7 +336,10 @@ def partition(disk, fmt='gpt', part_name='', mbr_type=0xC):
     gpt.u64PartitionEntryLBA = 2
 
     gpt.parse(ctypes.create_string_buffer(gpt.dwNumberOfPartitionEntries*gpt.dwSizeOfPartitionEntry))
-    gpt.setpart(0, gpt.u64FirstUsableLBA, gpt.u64LastUsableLBA-gpt.u64FirstUsableLBA+1, part_name)
+
+    # Windows 11 does not like a start below 1MB nor an end in the last 2MB.
+    # 11 even makes a MS reserved part in the first MB!
+    gpt.setpart(0, 0x800, gpt.u64LastUsableLBA-0x1000)
 
     disk.write(gpt.pack())
     disk.seek(gpt.u64PartitionEntryLBA*512)
