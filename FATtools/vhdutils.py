@@ -25,8 +25,9 @@ bitmap must be checked to determine which sectors are in use.
 Since offsets are represented in sectors, the BAT can address sectors in a range
 up to 2^32-1 or about 2 TiB.
 The disk image itself is shorter due to VHD internal structures (assuming 2^20
-blocks of default size, the very first sectors are occupied by heaeders, 4 MiB
+blocks of default size, the first 3 sectors are occupied by heaeders, 4 MiB
 by the BAT and 512 MiB by bitmap sectors.
+In fact, Windows 11 refuses to mount a VHD >2040 GiB.
 
 A BAT index of 0xFFFFFFFF signals a zeroed block not allocated physically:
 such value is kept until a block is written with all zeros, too. 
@@ -38,6 +39,9 @@ DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 import FATtools.utils as utils
 from FATtools.debug import log
 from FATtools.utils import myfile
+
+
+MAX_VHD_SIZE = 2040<<30 # Windows 11 won't mount bigger VHDs
 
 
 
@@ -667,6 +671,8 @@ def mk_crc(s):
 
 def mk_fixed(name, size, overwrite='no'):
     "Creates an empty fixed VHD or transforms a previous image if 'size' is -1"
+    if size > MAX_VHD_SIZE:
+        raise BaseException("Can't create a VHD >2040 GiB!")
     if os.path.exists(name):
         if size != -1 and overwrite!='yes':
             raise BaseException("Can't silently overwrite a pre-existing VHD image!")
@@ -705,6 +711,8 @@ def mk_fixed(name, size, overwrite='no'):
 
 def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no'):
     "Creates an empty dynamic VHD"
+    if size > MAX_VHD_SIZE:
+        raise BaseException("Can't create a VHD >2040 GiB!")
     if os.path.exists(name) and overwrite!='yes':
         raise BaseException("Can't silently overwrite a pre-existing VHD image!")
 
