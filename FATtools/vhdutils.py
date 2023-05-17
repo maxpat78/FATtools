@@ -800,12 +800,12 @@ def mk_diff(name, base, overwrite='no'):
     # It stores both absolute and relative pathnames, tough it isn't
     # strictly necessary (but disk manager silently fixes this)
     loc[0].dwPlatformCode = b'W2ru'
-    loc[0].dwPlatformDataSpace = ((len(rel_base)+512)//512)*512
+    loc[0].dwPlatformDataSpace = ((len(rel_base)+511)//512)*512
     loc[0].dwPlatformDataLength = len(rel_base)
     loc[0].dwPlatformDataOffset = 1536+bmpsize
 
     loc[1].dwPlatformCode = b'W2ku'
-    loc[1].dwPlatformDataSpace = ((len(abs_base)+512)//512)*512
+    loc[1].dwPlatformDataSpace = ((len(abs_base)+511)//512)*512
     loc[1].dwPlatformDataLength = len(abs_base)
     loc[1].dwPlatformDataOffset = loc[0].dwPlatformDataOffset+loc[0].dwPlatformDataSpace
         
