@@ -10,7 +10,7 @@ Moreover:
 - it can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images
 - it can handle RAW disk images and BytesIO "RamDisk" images, also.
 - it supports 4K sectors
-- it can handle large clusters (128K, 256K) with FAT formats
+- it can handle large clusters (128K, 256K) with FAT formats[2]
 
 Following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not regularly tested):
 - sector aligned read/writes with both file images and real disks
@@ -38,7 +38,7 @@ Code is GPLed (look at GPL.TXT).
 
 
 [1] VHDX Log support is actually limited to replaying capability.
-
+[2] Actually, to say, one can partition with GPT an 8 TB VHDX with 4K sectors and format with FAT32 and happily use it under Windows 11. However, Windows 11 CHKDSK reports no more than 4 TB _bytes_ (while it counts _clusters_ correctly). Also, FORMAT itself can't apply such legitimate FAT32 format to an 8 TB disk.
 
 
 # At a glance
