@@ -11,8 +11,11 @@ def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=No
     par = parser_create_fn(*parser_create_args,description="Applies a FAT12/16/32 or exFAT File System to a disk device or file image.")
     par.add_argument('fs',help="The image file or disk device to write to",metavar="FS")
     par.add_argument("-t", "--fstype", dest="fs_type", help="try to apply the specified File System between FAT12, FAT16, FAT32 or EXFAT. Default: based on medium size.", metavar="FSTYPE")
-    par.add_argument("-c", "--cluster", dest="cluster_size", help="force a specified cluster size between 512, 1024, 2048, 4096, 8192, 16384, 32768 (since MS-DOS) or 65536 bytes (Windows NT+) for FAT. exFAT permits up to 32M. Default: based on medium size. Accepts 'k' and 'm' postfix for Kibibytes and Mebibytes.", metavar="CLUSTER")
+    par.add_argument("-c", "--cluster", dest="cluster_size", help="force a specified cluster size between 512, 1024, 2048, 4096, 8192, 16384, 32768 (since DOS) or 65536 bytes (Windows NT+; 128K and 256K clusters are allowed with 4K sectors) for FAT. exFAT permits clusters up to 32M. Default: based on medium size. Accepts 'k' and 'm' postfix for Kibibytes and Mebibytes.", metavar="CLUSTER")
     par.add_argument("-p", "--partition", dest="part_type", help="create a single partition from all disk space before formatting. Accepts MBR, GPT or MBR_OLD (2 GB max, MS-DOS <7.1 compatible)", metavar="PARTTYPE")
+    par.add_argument("--fat32compat", action="store_true",  dest="fat32_compat", help="FAT32 is applied in Windows XP compatibility mode, i.e. only if 65525 < clusters < 4177918 (otherwise: 2^28-11 clusters allowed)")
+    par.add_argument("--no-fat12", action="store_true",  dest="fat12_disable", help="FAT12 is never applied to small hard disks (~127/254M on DOS/NT systems)")
+    par.add_argument("--no-64k-cluster", action="store_true",  dest="disable_64k", help="do not use 64K clusters (DOS compatibility)")
     return par
 
 def call(args):
@@ -21,7 +24,11 @@ def call(args):
         print('Invalid disk or image file specified!')
         sys.exit(1)
 
-    # Windows 10 Shell happily auto-mounts a VHD ONLY IF partitioned and formatted
+    SECTOR = 512
+    if dsk.type() == 'VHDX' and dsk.metadata.physical_sector_size == 4096: SECTOR = 4096
+
+    # Windows 10 Shell (or START command) happily auto-mounts a VHD ONLY IF partitioned and formatted
+    # However, a valid VHD is always mounted and can be handled with Diskpart (GUI/CUI)
     if args.part_type:
         t = args.part_type.lower()
         if t not in ('mbr', 'mbr_old', 'gpt'):
@@ -30,19 +37,24 @@ def call(args):
         print("Creating a %s partition with all disk space..."%t.upper())
         if t in ('mbr', 'mbr_old'):
             if dsk.size > (2<<40): 
-                print('You must specify GPT partition scheme with disks >2TB!')
+                print('You MUST use GPT partition scheme with disks >2TB!')
                 sys.exit(1)
+            #~ if dsk.size > (2<<40) and SECTOR==512: 
+                #~ print('You MUST use GPT partition scheme with disks >2TB!')
+                #~ sys.exit(1)
+            #~ if dsk.size > (16<<40) and SECTOR==4096: 
+                #~ print('You MUST use GPT partition scheme with 4K sectored disks >16TB!')
+                #~ sys.exit(1)
             if t == 'mbr_old':
-                mbrtyp = 6
-                if dsk.size < 32<<20:
-                    mbrtyp = 4
+                if dsk.size > (2<<30): print('Warning: old DOS does not like primary partitions >2GB, size reduced automatically!')
+                partutils.partition(dsk, 'mbr', {'compatibility':0})
                 if args.fs_type and args.fs_type.lower() == 'fat32':
-                    mbrtyp = 0xB
-                partutils.partition(dsk, 'mbr', mbr_type=mbrtyp)
-            else: # MS-DOS >7.0
-                partutils.partition(dsk, 'mbr', mbr_type=0xC)
+                    args.fs_type = 'fat16'
+                    print('Warning: old DOS does not know FAT32, switching to FAT16.')
+            else:
+                partutils.partition(dsk, 'mbr', options={'phys_sector':SECTOR})
         else:
-            partutils.partition(dsk)
+            partutils.partition(dsk, 'gpt', options={'phys_sector':SECTOR})
         dsk.close()
         dsk = vopen(args.fs, 'r+b', 'partition0')
         if type(dsk) == type(''):
@@ -56,36 +68,26 @@ def call(args):
 
     if args.fs_type:
         t = args.fs_type.lower()
-        if t == 'fat12':
-            format = fat12_mkfs
-        elif t == 'fat16':
-            format = fat16_mkfs
-        elif t == 'fat32':
-            format = fat32_mkfs
-            params['fat32_allows_few_clusters'] = 1
+        if t in ('fat12','fat16','fat32'):
+            format = fat_mkfs
+            params['fat_bits'] = {'fat12':12,'fat16':16,'fat32':32}[t]
         elif t == 'exfat':
             format = exfat_mkfs
         else:
             print("mkfat error: bad file system specified!")
-            par.print_help()
             sys.exit(1)
-        params['wanted_fs'] = t
     else:
-        if dsk.size < 127<<20: # 127M
-            format = fat12_mkfs
-            t = 'FAT12'
-        elif 127<<20 <= dsk.size < 2047<<20: # 2G
-            format = fat16_mkfs
-            t = 'FAT16'
-        elif 2047<<20 <= dsk.size < 126<<30: # 126G, but could be up to 8T w/ 32K cluster
-            format = fat32_mkfs
-            t = 'FAT32'
+        if dsk.size < 126<<30: # 126G
+            format = fat_mkfs
+            t = 'FAT'
         else:
-            format = exfat_mkfs # can be successfully applied to an 1.44M floppy, too!
+            format = exfat_mkfs
             t = 'exFAT'
-        print("%s file system auto selected..." % t)
+        print("%s format selected." % t)
 
     if args.cluster_size:
+        max_clust = 17
+        if SECTOR == 4096: max_clust = 19
         t = args.cluster_size.lower()
         if t[-1] == 'k':
             params['wanted_cluster'] = int(args.cluster_size[:-1])<<10
@@ -93,12 +95,40 @@ def call(args):
             params['wanted_cluster'] = int(args.cluster_size[:-1])<<20
         else:
             params['wanted_cluster'] = int(args.cluster_size)
-        if params['wanted_cluster'] not in [512<<i for i in range(0,17)]:
+        if params['wanted_cluster'] not in [512<<i for i in range(0,max_clust)]:
             print("mkfat error: bad cluster size specified!")
-            par.print_help()
             sys.exit(1)
 
-    format(dsk, dsk.size, params=params)
+    if args.fat32_compat:
+        params['fat32_forbids_low_clusters'] = 1
+        params['fat32_forbids_high_clusters'] = 1
+    if args.fat12_disable:
+        params['fat12_disabled'] = 1
+    if args.disable_64k:
+        params['fat_no_64K_cluster'] = 1
+
+    params['show_info'] = 1
+    ret = format(dsk, dsk.size, SECTOR, params)
+    if ret != 0:
+        print('mkfat failed!')
+        sys.exit(1)
+    if ret == 0 and args.part_type.lower()!='gpt':
+         # set the right MBR partition type
+        if format == exfat_mkfs:
+            dsk.mbr.partitions[0].bType = 7
+        else:
+            if params['fat_bits'] == 32:
+                dsk.mbr.partitions[0].bType = 0xB
+                if dsk.size > 1024*255*63*512: dsk.mbr.partitions[0].bType = 0xC
+            elif params['fat_bits'] == 16:
+                dsk.mbr.partitions[0].bType = 6
+                if dsk.size < (32<<20): dsk.mbr.partitions[0].bType = 4
+            elif params['fat_bits'] == 12: dsk.mbr.partitions[0].bType = 4
+        # update the MBR
+        dsk.disk.seek(0)
+        dsk.disk.write(dsk.mbr.pack(SECTOR))
+        
+
 
 if __name__ == '__main__':
     par=create_parser()

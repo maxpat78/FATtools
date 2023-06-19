@@ -67,6 +67,7 @@ class boot_exfat(object):
         self.fatsize = self.dwDataRegionLength
         # Data region offset (=cluster #2)
         self.dataoffs = self.dwDataRegionOffset * (1 << self.uchBytesPerSector) + self._pos
+        self.checkvbr()
 
     __getattr__ = utils.common_getattr
 
@@ -93,6 +94,18 @@ class boot_exfat(object):
         "Root offset"
         return self.cl2offset(self.dwRootCluster)
 
+    def checkvbr(self):
+        if not self.stream: return 0
+        sector = 1 << self.uchBytesPerSector
+        self.stream.seek(0)
+        s = self.stream.read(sector*11)
+        calc_crc = self.GetChecksum(s)
+        s = self.stream.read(sector)
+        stored_crc = struct.unpack('<I',s[:4])[0]
+        print(calc_crc, stored_crc)
+        if calc_crc != stored_crc:
+            raise exFATException("FATAL: exFAT Volume Boot Region is corrupted, bad checksum!")
+        
     @staticmethod
     def GetChecksum(s, UpCase=False):
         "Computates the checksum for the VBR sectors (the first 11) or the UpCase table"

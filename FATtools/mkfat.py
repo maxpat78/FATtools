@@ -1,496 +1,303 @@
 import struct, os, sys, pprint, math, importlib, locale, optparse
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
-from FATtools import utils, partutils
+from FATtools import utils
 from FATtools.FAT import *
 from FATtools.exFAT import *
-from FATtools.Volume import vopen
 
 nodos_asm_5Ah = b'\xB8\xC0\x07\x8E\xD8\xBE\x73\x00\xAC\x08\xC0\x74\x09\xB4\x0E\xBB\x07\x00\xCD\x10\xEB\xF2\xF4\xEB\xFD\x4E\x4F\x20\x44\x4F\x53\x00'
 
+""" fat_mkfs allowed params={}:
 
-def fat12_mkfs(stream, size, sector=512, params={}):
-    "Make a FAT12 File System on stream. Returns 0 for success."
-    sectors = size//sector
+query_info
 
-    if sectors < 16 or sectors > 0xFFFFFFFF:
-        print("Fatal: can't apply file system to a %d sectors disk!" % sectors)
-        return 1
+if set, no format is applied but a dictionary with all allowed combinations
+of FAT/cluster sizes is returned.
 
-    # NOTE: Windows 10 CHKDSK assumes a 2847 clustered floppy even if fat12_mkfs formated a smaller one!!! 
+show_info
 
-    # Minimum is 1 (Boot)
-    if 'reserved_size' in params:
-        reserved_size = params['reserved_size']*sector
-    else:
-        reserved_size = 1*sector
+if set, prints messages emitted by format to the console.
 
-    if 'fat_copies' in params:
-        fat_copies = params['fat_copies']
-    else:
-        fat_copies = 2 # default: best setting
+fat_bits
 
-    if 'root_entries' in params:
-        root_entries = params['root_entries']
-    else:
-        root_entries = 224
+FAT slot size in bits (12, 16 or 32); if not specified, tries all sizes and
+sets the field to report the chosen FAT type to the caller.
 
-    reserved_size += root_entries*32 # in FAT12/16 this space resides outside the cluster area
+reserved_size
 
-    allowed = {} # {cluster_size : fsinfo}
+reserved sectors before FAT table. Default: 1 (FAT12/16), 9 (FAT32)
+Windows 10/11 defaults to 8 for FAT12/16, probably to make FAT32 conversion
+easier.
 
-    for i in range(9, 17): # cluster sizes 0.5K...64K
-        fsinfo = {}
-        cluster_size = (2**i)
-        clusters = (size - reserved_size) // cluster_size
-        if clusters%2: clusters-=1 # get always an even number
-        fat_size = ((12*(clusters+2))//8+sector-1)//sector * sector # 12-bit slot
-        required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
-        while required_size > size:
-            clusters -= 2
-            fat_size = ((12*(clusters+2))//8+sector-1)//sector * sector # 12-bit slot
-            required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
-        if clusters > 4085:
-            continue
-        fsinfo['required_size'] = required_size # space occupied by FS
-        fsinfo['reserved_size'] = reserved_size # space reserved before FAT#1
-        fsinfo['cluster_size'] = cluster_size
-        fsinfo['clusters'] = clusters
-        fsinfo['fat_size'] = fat_size # space occupied by a FAT copy
-        fsinfo['root_entries'] = root_entries
-        allowed[cluster_size] = fsinfo
+fat_copies
 
-    if not allowed:
-        if clusters > 4085: # switch to FAT16
-            print("Too many clusters to apply FAT12: trying FAT16...")
-            return fat16_mkfs(stream, size, sector, params)
-        print("ERROR: can't apply any FAT12/16/32 format!")
-        return 1
+number of FAT tables (default: 2).
 
-    #~ print "* MKFS FAT12 INFO: allowed combinations for cluster size:"
-    #~ pprint.pprint(allowed)
+root_entries
 
-    fsinfo = None
+number of entries in the fixed root directory (ignored in FAT32).
+Must be a multiple of 16. Default: 224 (FAT12) or 512 (FAT16).
 
-    if 'wanted_cluster' in params:
-        if params['wanted_cluster'] in allowed:
-            fsinfo = allowed[params['wanted_cluster']]
-        else:
-            print("Specified cluster size of %d is not allowed!" % params['wanted_cluster'])
-            return -1
-    else:
-        # MS-inspired selection
-        if size <= 2<<20:
-            fsinfo = allowed[512] # < 2M
-        elif 2<<20 < size <= 4085<<10:
-            fsinfo = allowed[1024]
-        elif 4<<20 < size <= 8170<<10:
-            fsinfo = allowed[2048]
-        elif 8<<20 < size <= 16340<<10:
-            fsinfo = allowed[4096]
-        elif 16<<20 < size <= 32680<<10:
-            fsinfo = allowed[8192]
-        elif 32<<20 < size <= 65360<<10:
-            fsinfo = allowed[16384]
-        elif 64<<20 < size <= 130720<<10:
-            fsinfo = allowed[32768]
-        else:
-            fsinfo = allowed[65536]
+wanted_cluster
 
-    boot = boot_fat16()
-    boot.chJumpInstruction = b'\xEB\x58\x90' # JMP opcode is mandatory, or CHKDSK won't recognize filesystem!
-    boot._buf[0x5A:0x5A+len(nodos_asm_5Ah)] = nodos_asm_5Ah # insert assembled boot code
-    boot.chOemID = b'%-8s' % b'MSDOS5.0' # makes some old DOS apps more happy
-    boot.wBytesPerSector = sector
-    boot.wSectorsCount = 1
-    boot.dwHiddenSectors = 0
-    boot.uchSectorsPerCluster = fsinfo['cluster_size']//sector
-    boot.uchFATCopies = fat_copies
-    boot.wMaxRootEntries = fsinfo['root_entries'] # not used in FAT32 (fixed root)
-    boot.uchMediaDescriptor = 0xF0 # floppy
-    if sectors < 65536: # Is it right?
-        boot.wTotalSectors = sectors
-    else:
-        boot.dwTotalLogicalSectors = sectors
-    boot.wSectorsPerFAT = fsinfo['fat_size']//sector
-    boot.dwVolumeID = FATDirentry.GetDosDateTime(1)
-    boot.sVolumeLabel = b'%-11s' % b'NO NAME'
-    boot.sFSType = b'%-8s' % b'FAT12'
-    boot.chPhysDriveNumber = 0
-    boot.uchSignature = 0x29
-    boot.wBootSignature = 0xAA55
-    c,h,s = partutils.size2chs(size,1)
-    if DEBUG&1: log("fat12_mkfs C=%d, H=%d, S=%d", c, h, s)
-    boot.wSectorsPerTrack = s
-    boot.wHeads = h # not used with LBA
+cluster size wanted by user, from 2^9 to 2^16 bytes. If sector size is 4096
+bytes, size is up to 2^18 (256K). If not specified, the best value is
+selected automatically.
 
-    boot.pack()
-    #~ print boot
-    #~ print 'FAT, root, cluster #2 offsets', hex(boot.fat()), hex(boot.fat(1)), hex(boot.root()), hex(boot.dataoffs)
+fat_no_64K_cluster
 
-    stream.seek(0)
-    # Write boot sector
-    stream.write(boot.pack())
-    # Blank FAT1&2 area
-    stream.seek(boot.fat())
-    blank = bytearray(boot.wBytesPerSector)
-    for i in range(boot.wSectorsPerFAT*2):
-        stream.write(blank)
-    # Initializes FAT1...
-    clus_0_2 = b'\xF0\xFF\xFF'
-    stream.seek(boot.wSectorsCount*boot.wBytesPerSector)
-    stream.write(clus_0_2)
-    # ...and FAT2
-    if boot.uchFATCopies == 2:
-        stream.seek(boot.fat(1))
-        stream.write(clus_0_2)
+if set, 64K clusters (or bigger) are not allowed (DOS, Windows 9x).
 
-    # Blank root at fixed offset
-    stream.seek(boot.root())
-    stream.write(bytearray(boot.wMaxRootEntries*32))
+fat_ff0_reserved
 
-    stream.flush() # force committing to disk before reopening, or could be not useable!
+if set, clusters in range ...FF0h-...FF6h are also treated as reserved: this
+should be the default for old FAT12 floppies, at least. Modern Windows reserv
+clusters from ...FF7h (clusters 0 and 1 are always reserved), so we can have:
+    0x100 - 0xF0 + 3 = 18 reserved clusters or
+    0x100 - 0xF7 + 3 = 11 reserved clusters
 
-    sizes = {0:'B', 10:'KiB',20:'MiB',30:'GiB',40:'TiB',50:'EiB'}
-    k = 0
-    for k in sorted(sizes):
-        if (fsinfo['required_size'] // (1<<k)) < 1024: break
+fat12_disabled
 
-    free_clusters = fsinfo['clusters'] # root is outside clusters heap
-    print("Successfully applied FAT12 to a %.02f %s volume.\n%d clusters of %.1f KB.\n%.02f %s free in %d clusters." % (fsinfo['required_size']/(1<<k), sizes[k], fsinfo['clusters'], fsinfo['cluster_size']/1024, free_clusters*boot.cluster/(1<<k), sizes[k], free_clusters))
-    print("\nFAT #1 @0x%X, Data Region @0x%X, Root @0x%X" % (boot.fatoffs, boot.cl2offset(2), boot.root()))
+if set, FAT12 is not applied to hard disks (i.e. disks >2880KB).
+fat_bits set to 12 always overrides this setting.
+In recent Windows editions (10, 11), CHKDSK often does not work when it
+finds unexpected formats. For example, we can successfully apply FAT16 to
+a 1.44M floppy but CHKDSK won't recognize it!
 
-    return 0
+fat32_forbids_low_clusters
 
+if set, FAT32 is allowed only if FAT16 can't be applied (clusters > 65525).
+FORMAT suggests this since Windows 2000 and Windows 10 CHKDSK wants at least
+65526 clusters to work properly.
+However, if FAT32 is applied to a smaller volume, Windows will access it
+regularly.
 
+fat32_forbids_high_clusters
 
-def fat16_mkfs(stream, size, sector=512, params={}):
-    "Make a FAT16 File System on stream. Returns 0 for success."
-    sectors = size//sector
+if set, FAT32 can't be applied with 4177918 or more clusters (FORMAT has
+such limit since Windows 9x).
+Otherwise, FAT32 allows up to 268435445 clusters (2^28-11: the 4 upper bits
+are reserved) and Windows (since 98, at least) can access it regularly.
+Obviously this way a couple FAT tables can waste almost 2GB!
+(Note that  a 300GB volume with more than 300 mil. x 0.5K clusters is mounted
+by Windows 11 and recognized by CHKDSK, which reports all clusters - the DIR
+command, instead, reports ~50GB free space only).
 
-    if sectors < 16 or sectors > 0xFFFFFFFF:
-        print("Fatal: can't apply file system to a %d sectors disk!" % sectors)
-        return 1
+fat32_backup_sector
 
-    # Minimum is 1 (Boot)
-    if 'reserved_size' in params:
-        reserved_size = params['reserved_size']*sector
-    else:
-        reserved_size = sector # MS-DOS 6.22 & 7.1 want this
+FAT32 Boot and FSI sectors backup copy (default: at sector 6).
 
-    if 'fat_copies' in params:
-        fat_copies = params['fat_copies']
-    else:
-        fat_copies = 2 # default: best setting
+Return codes:
+ 0  no errors
+-1  invalid sector size 
+-2  bad FAT bits
+-3  bad volume size (160K < size < 2T [16T with 4K sectors])
+-4  no possible format with current parameters (try exFAT?)
+-5  specified FAT type can't be applied
+-6  specified cluster can't be applied """
 
-    if 'root_entries' in params:
-        root_entries = params['root_entries']
-    else:
-        root_entries = 512
-
-    reserved_size += root_entries*32 # in FAT12/16 this space resides outside the cluster area
-
-    allowed = {} # {cluster_size : fsinfo}
-
-    for i in range(9, 17): # cluster sizes 0.5K...64K
-        fsinfo = {}
-        cluster_size = (2**i)
-        clusters = (size - reserved_size) // cluster_size
-        if clusters%2: clusters-=1 # get always an even number
-        fat_size = (2*(clusters+2)+sector-1)//sector * sector
-        required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
-        while required_size > size:
-            clusters -= 2
-            fat_size = (2*(clusters+2)+sector-1)//sector * sector
-            required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
-        # Should switch to FAT12?
-        if clusters < 4086 or clusters > 65525: # MS imposed limits
-            continue
-        fsinfo['required_size'] = required_size # space occupied by FS
-        fsinfo['reserved_size'] = reserved_size # space reserved before FAT#1
-        fsinfo['cluster_size'] = cluster_size
-        fsinfo['clusters'] = clusters
-        fsinfo['fat_size'] = fat_size # space occupied by a FAT copy
-        fsinfo['root_entries'] = root_entries
-        allowed[cluster_size] = fsinfo
-
-    if not allowed:
-        if clusters > 65525: # switch to FAT32
-            print("Too many clusters to apply FAT16: trying FAT32...")
-            return fat32_mkfs(stream, size, sector, params)
-        if clusters < 4086: # switch to FAT12
-            print("Too few clusters to apply FAT16: trying FAT12...")
-            return fat12_mkfs(stream, size, sector, params)
-        return 1
-
-    #~ print "* MKFS FAT16 INFO: allowed combinations for cluster size:"
-    #~ pprint.pprint(allowed)
-
-    fsinfo = None
-
-    if 'wanted_cluster' in params:
-        if params['wanted_cluster'] in allowed:
-            fsinfo = allowed[params['wanted_cluster']]
-        else:
-            if 'wanted_fs' in params and params['wanted_fs'] == 'fat16':
-                print("Specified cluster size of %d is not allowed!" % params['wanted_cluster'])
-                return -1
-            else:
-                print("Too many %d clusters to apply FAT16: trying FAT32..." % params['wanted_cluster'])
-                return fat32_mkfs(stream, size, sector, params)
-    else:
-        # MS-inspired selection
-        if size <= 32<<20:
-            fsinfo = allowed[512] # < 32M
-        elif 32<<20 < size <= 64<<20:
-            fsinfo = allowed[1024]
-        elif 64<<20 < size <= 128<<20:
-            fsinfo = allowed[2048]
-        elif 128<<20 < size <= 256<<20:
-            fsinfo = allowed[4096]
-        elif 256<<20 < size <= 512<<20:
-            fsinfo = allowed[8192] # 256M-512M
-        elif 512<<20 < size <= 1<<30:
-            fsinfo = allowed[16384]
-        elif 1<<30 < size <= 2<<30:
-            fsinfo = allowed[32768]
-        else:
-            fsinfo = allowed[65536]
-
-    boot = boot_fat16()
-    boot.chJumpInstruction = b'\xEB\x58\x90' # JMP opcode is mandatory, or CHKDSK won't recognize filesystem!
-    boot._buf[0x5A:0x5A+len(nodos_asm_5Ah)] = nodos_asm_5Ah # insert assembled boot code
-    boot.chOemID = b'%-8s' % b'MSDOS5.0' # makes some old DOS apps more happy
-    boot.wBytesPerSector = sector
-    boot.wSectorsCount = (reserved_size - fsinfo['root_entries']*32)//sector
-    boot.dwHiddenSectors = 1
-    boot.uchSectorsPerCluster = fsinfo['cluster_size']//sector
-    boot.uchFATCopies = fat_copies
-    boot.wMaxRootEntries = fsinfo['root_entries'] # not used in FAT32 (fixed root)
-    boot.uchMediaDescriptor = 0xF8
-    if sectors < 65536: # Is it right?
-        boot.wTotalSectors = sectors
-    else:
-        boot.dwTotalLogicalSectors = sectors
-    boot.wSectorsPerFAT = fsinfo['fat_size']//sector
-    boot.dwVolumeID = FATDirentry.GetDosDateTime(1)
-    boot.sVolumeLabel = b'%-11s' % b'NO NAME'
-    boot.sFSType = b'%-8s' % b'FAT16'
-    boot.chPhysDriveNumber = 0x80
-    boot.uchSignature = 0x29
-    boot.wBootSignature = 0xAA55
-    c,h,s = partutils.size2chs(size,1)
-    if DEBUG&1: log("fat16_mkfs C=%d, H=%d, S=%d", c, h, s)
-    boot.wSectorsPerTrack = s
-    boot.wHeads = h # not used with LBA
-
-    boot.pack()
-    #~ print boot
-    #~ print 'FAT, root, cluster #2 offsets', hex(boot.fat()), hex(boot.fat(1)), hex(boot.root()), hex(boot.dataoffs)
-
-    stream.seek(0)
-    # Write boot sector
-    stream.write(boot.pack())
-    # Blank FAT1&2 area
-    stream.seek(boot.fat())
-    blank = bytearray(boot.wBytesPerSector)
-    for i in range(boot.wSectorsPerFAT*2):
-        stream.write(blank)
-    # Initializes FAT1...
-    clus_0_2 = b'\xF8\xFF\xFF\xFF'
-    stream.seek(boot.wSectorsCount*boot.wBytesPerSector)
-    stream.write(clus_0_2)
-    # ...and FAT2
-    if boot.uchFATCopies == 2:
-        stream.seek(boot.fat(1))
-        stream.write(clus_0_2)
-
-    # Blank root at fixed offset
-    stream.seek(boot.root())
-    stream.write(bytearray(boot.wMaxRootEntries*32))
-
-    stream.flush() # force committing to disk before reopening, or could be not useable!
-
-    sizes = {0:'B', 10:'KiB',20:'MiB',30:'GiB',40:'TiB',50:'EiB'}
-    k = 0
-    for k in sorted(sizes):
-        if (fsinfo['required_size'] // (1<<k)) < 1024: break
-
-    free_clusters = fsinfo['clusters'] # root is outside clusters heap
-    print("Successfully applied FAT16 to a %.02f %s volume.\n%d clusters of %.1f KB.\n%.02f %s free in %d clusters." % (fsinfo['required_size']/(1<<k), sizes[k], fsinfo['clusters'], fsinfo['cluster_size']/1024, free_clusters*boot.cluster/(1<<k), sizes[k], free_clusters))
-    print("\nFAT #1 @0x%X, Data Region @0x%X, Root @0x%X" % (boot.fatoffs, boot.cl2offset(2), boot.root()))
-
-    return 0
-
-
-
-def fat32_mkfs(stream, size, sector=512, params={}):
-    "Make a FAT32 File System on stream. Returns 0 for success, required additional clusters in case of failure."
-
-#~ Windows CHKDSK wants at least 65526 clusters (512 bytes min).
-#~ In fact, we can successfully apply FAT32 with less than 65526 clusters to
-#~ a small drive (i.e., 32M with 1K/4K cluster) and Windows 10 will read and
-#~ write it: but CHKDSK WON'T WORK!
-#~ 4177918 (FAT32 limit where exFAT available)
-#~ 2^16 - 11 = 65525 (FAT16)
-#~ 2^12 - 11 = 4085 (FAT12)
-#~ Also, we can successfully apply FAT16 to a 1.44M floppy (2855 clusters): but,
-#~ again, we'll waste FAT space and, more important, CHKDSK won't recognize it!
-
-    sectors = size//sector
-
-    if sectors > 0xFFFFFFFF: # switch to exFAT where available
-        print("Fatal: can't apply file system to a %d sectors disk!" % sectors)
+def fat_mkfs(stream, size, sector=512, params={}):
+    "Creates a FAT 12/16/32 File System on stream. Returns 0 for success."
+    if sector not in (512, 4096):
+        if verbose: print("Fatal: only 512 or 4096 bytes sectors are supported!")
         return -1
-
-    # reserved_size auto adjusted according to unallocable space
-    # Minimum is 2 (Boot & FSInfo)
-    if 'reserved_size' in params:
-        reserved_size = params['reserved_size']*sector
+    sectors = size//sector
+    verbose = params.get('show_info', 0)
+    
+    fat_bits = params.get('fat_bits', 0)
+    if fat_bits:
+        if fat_bits not in (12,16,32):
+            if verbose: print("Fatal: FAT slot can be only 12, 16 or 32 bits long!")
+            return -2
+        fat_slot_sizes = [fat_bits]
     else:
-        reserved_size = 32*sector # fixed or variable?
+        fat_slot_sizes = [12,16,32]
+        if params.get('fat12_disabled'): del fat_slot_sizes[0]
 
-    if 'fat_copies' in params:
-        fat_copies = params['fat_copies']
+    if sectors < 320 or sectors > 0xFFFFFFFF:
+        if verbose: print("Fatal: can't apply FAT file system to a %d sectors disk!" % sectors) # min is 5.25" 160K floppy
+        return -3
+
+    fat_copies = params.get('fat_copies', 2)                # default: best setting
+    reserved_clusters = 11                                  # (0,1, ..F7h-..FFh are always reserved)
+    if params.get('fat_ff0_reserved') or sectors < 5761:    # if floppy or requested
+        reserved_clusters = 18
+    max_cluster = 17
+    if params.get('fat_no_64K_cluster'): max_cluster = 16
+    if sector == 4096: max_cluster = 19
+    
+    fat_fs = {} # {fat_slot_size : allowed}
+    
+    # Calculate possible combinations for each FAT and cluster size
+    for fat_slot_size in fat_slot_sizes:
+        allowed = {} # {cluster_size : fsinfo}
+        for i in range(9, max_cluster): # cluster sizes 0.5K...32K (64K)
+            fsinfo = {}
+            root_entries = params.get('root_entries', {12:224,16:512,32:0}[fat_slot_size])
+            root_entries_size = (root_entries*32)+(sector-1)//sector # translate into sectors
+            reserved_size = params.get('reserved_size', 1)*sector
+            if fat_slot_size == 32 and not params.get('reserved_size'): reserved_size = 9*sector
+            rreserved_size = reserved_size + root_entries_size # in FAT12/16 this space resides outside the cluster area
+            cluster_size = (2**i)
+            clusters = (size - rreserved_size) // cluster_size
+            while 1:
+                fat_size = ((fat_slot_size*(clusters+2))//8+sector-1)//sector * sector # FAT sectors according to slot size (12, 16 or 32 bit)
+                required_size = cluster_size*clusters + fat_copies*fat_size + rreserved_size
+                if required_size <= size: break
+                clusters -= 1
+            if clusters > (2**fat_slot_size)-reserved_clusters: continue # increase cluster size
+            if fat_slot_size == 32:
+                if clusters > (2**28)-reserved_clusters: continue # FAT32 uses 28 bits only
+                if params.get('fat32_forbids_low_clusters') and clusters < 65526: continue
+                if params.get('fat32_forbids_high_clusters') and clusters > 4177917: continue
+            fsinfo['required_size'] = required_size # space occupied by FS
+            fsinfo['reserved_size'] = reserved_size # space reserved before FAT#1
+            fsinfo['cluster_size'] = cluster_size
+            fsinfo['clusters'] = clusters
+            fsinfo['fat_size'] = fat_size # space occupied by a FAT copy
+            fsinfo['root_entries'] = root_entries
+            allowed[cluster_size] = fsinfo
+        if allowed: fat_fs[fat_slot_size] = allowed
+
+    if params.get('query_info'): return fat_fs
+    
+    if not fat_fs:
+        if verbose: print("Fatal error, can't apply any FAT file system!")
+        return -4
+        
+    if fat_bits and not fat_fs[fat_bits]:
+        if verbose: print("Can't apply FAT%d file system with any cluster size, aborting."%fat_bits)
+        return -5
+    
+    if not fat_bits:
+        fat_bits = list(fat_fs.keys())[0]
+    
+    # Choose a cluster size or try the user requested one
+    wanted_cluster = params.get('wanted_cluster')
+    if wanted_cluster:
+        if wanted_cluster not in fat_fs[fat_bits]:
+            if not params.get('fat_bits'): # retry another FAT type
+                for n in (12,16,32):
+                    if fat_fs.get(n) and fat_fs[n].get(wanted_cluster):
+                        fat_bits = n
+                        break
+            if wanted_cluster not in fat_fs[fat_bits]:
+                if verbose: print("Specified cluster size of %d is not allowed!" % wanted_cluster)
+                return -6
+        fsinfo = fat_fs[fat_bits][wanted_cluster]
     else:
-        fat_copies = 2 # default: best setting
+        # Pick the medium
+        allowed = fat_fs[fat_bits]
+        K = list(allowed.keys())
+        i = len(K) // 2
+        if i < 0: i=0
+        fsinfo = allowed[K[i]]
+        if verbose: print("Selected %d bytes cluster." % K[i])
 
-    allowed = {} # {cluster_size : fsinfo}
+    if not params.get('fat_bits') and verbose: print("Selected FAT%d file system."%fat_bits)
+    params['fat_bits'] = fat_bits
 
-    for i in range(9, 17): # cluster sizes 0.5K...64K
-        fsinfo = {}
-        cluster_size = (2**i)
-        clusters = (size - reserved_size) // cluster_size
-        if clusters%2: clusters-=1 # get always an even number
-        fat_size = (4*(clusters+2)+sector-1)//sector * sector
-        required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
-        while required_size > size:
-            clusters -= 2
-            fat_size = (4*(clusters+2)+sector-1)//sector * sector
-            required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size
-        if (clusters < 65526 and not params.get('fat32_allows_few_clusters')) or clusters > 0x0FFFFFF6: # MS imposed limits
-            continue
-        fsinfo['required_size'] = required_size # space occupied by FS
-        fsinfo['reserved_size'] = reserved_size # space reserved before FAT#1
-        fsinfo['cluster_size'] = cluster_size
-        fsinfo['clusters'] = clusters
-        fsinfo['fat_size'] = fat_size # space occupied by a FAT copy
-        allowed[cluster_size] = fsinfo
-
-    if not allowed:
-        if clusters < 65526:
-            print("Too few clusters to apply FAT32: trying with FAT16...")
-            return fat16_mkfs(stream, size, sector, params)
-        if 'wanted_fs' in params and params['wanted_fs'] == 'fat32':
-            print("Too many clusters to apply FAT32: aborting.")
-            return -1
-        else:
-            print("Too many %d clusters to apply FAT32: trying exFAT..." % params['wanted_cluster'])
-            return exfat_mkfs(stream, size, sector, params)
-
-    #~ print "* MKFS FAT32 INFO: allowed combinations for cluster size:"
-    #~ pprint.pprint(allowed)
-
-    fsinfo = None
-
-    if 'wanted_cluster' in params:
-        if params['wanted_cluster'] > 65536:
-            if 'wanted_fs' in params and params['wanted_fs'] == 'fat32':
-                print("This version of FAT32 doesn't handle clusters >64K: aborting.")
-                return -1
-            else:
-                print("This version of FAT32 doesn't handle clusters >64K: trying exFAT...")
-                return exfat_mkfs(stream, size, sector, params)
-        if params['wanted_cluster'] in allowed:
-            fsinfo = allowed[params['wanted_cluster']]
-        else:
-            print("Specified cluster size of %d is not allowed for FAT32: retrying with FAT16..." % params['wanted_cluster'])
-            return fat16_mkfs(stream, size, sector, params)
+    if fat_bits == 32:
+        boot = boot_fat32()
     else:
-        # MS-inspired selection
-        if size <= 64<<20:
-            fsinfo = allowed[512] # < 64M
-        elif 64<<20 < size <= 128<<20:
-            fsinfo = allowed[1024]
-        elif 128<<20 < size <= 256<<20:
-            fsinfo = allowed[2048]
-        elif 256<<20 < size <= 8<<30:
-            fsinfo = allowed[4096] # 256M-8G
-        elif 8<<30 < size <= 16<<30:
-            fsinfo = allowed[8192]
-        elif 16<<30 < size <= 32<<30:
-            fsinfo = allowed[16384]
-        elif 32<<30 < size <= 2048<<30:
-            fsinfo = allowed[32768]
-        # Windows 10 supports 128K and 256K, too!
-        else:
-            fsinfo = allowed[65536]
-
-    boot = boot_fat32()
+        boot = boot_fat16()
     boot.chJumpInstruction = b'\xEB\x58\x90' # JMP opcode is mandatory, or CHKDSK won't recognize filesystem!
     boot._buf[0x5A:0x5A+len(nodos_asm_5Ah)] = nodos_asm_5Ah # insert assembled boot code
-    boot.chOemID = b'%-8s' % b'MSWIN4.1' # this makes MS-DOS 7 Scandisk happy
+    if fat_bits == 32:
+        boot.chOemID = b'%-8s' % b'MSWIN4.1' # this makes MS-DOS 7 Scandisk happy
+    else:
+        # It should be investigated if pre-5.0 editions want a particular OEM ID
+        boot.chOemID = b'%-8s' % b'MSDOS5.0' # makes some old DOS apps more happy
     boot.wBytesPerSector = sector
-    boot.wSectorsCount = reserved_size//sector
-    #~ boot.wHiddenSectors = 1
-    boot.wHiddenSectors = 0x3f # 63 for standard DOS part
+    boot.wReservedSectors = fsinfo['reserved_size']//sector
+    boot.dwHiddenSectors = 63 # sectors preceding a partition (should be extracted from partition offset!)
     boot.uchSectorsPerCluster = fsinfo['cluster_size']//sector
     boot.uchFATCopies = fat_copies
-    boot.uchMediaDescriptor = 0xF8
-    boot.dwTotalLogicalSectors = sectors
-    boot.dwSectorsPerFAT = fsinfo['fat_size']//sector
-    boot.dwRootCluster = 2
-    boot.wFSISector = 1
-    if 'backup_sectors' in params:
-        boot.wBootCopySector = params['backup_sectors'] # typically 6
+    boot.wMaxRootEntries = fsinfo['root_entries'] # fixed root (not used in FAT32)
+    if fat_bits == 12 and sectors < 5761:
+        boot.uchMediaDescriptor = 0xF0 # typical floppy (also F9h)
+        boot.dwHiddenSectors = 0 # assume NOT partitioned
     else:
-        #~ boot.wBootCopySector = 0
-        boot.wBootCopySector = 6
+        boot.uchMediaDescriptor = 0xF8 # HDD
+    if sectors < 65536:
+        boot.wTotalSectors = sectors
+    else:
+        boot.dwTotalSectors = sectors
+    if fat_bits != 32:
+        boot.wSectorsPerFAT = fsinfo['fat_size']//sector
+    else:
+        boot.dwSectorsPerFAT = fsinfo['fat_size']//sector
     boot.dwVolumeID = FATDirentry.GetDosDateTime(1)
     boot.sVolumeLabel = b'%-11s' % b'NO NAME'
-    boot.sFSType = b'%-8s' % b'FAT32'
+    boot.sFSType = b'%-8s' % b'FAT%d' % fat_bits
     boot.chPhysDriveNumber = 0x80
-    boot.chExtBootSignature = 0x29
+    if fat_bits != 32:
+        boot.uchSignature = 0x29
+    else:
+        boot.chExtBootSignature = 0x29
     boot.wBootSignature = 0xAA55
-    c,h,s = partutils.size2chs(size,1)
-    if DEBUG&1: log("fat32_mkfs C=%d, H=%d, S=%d", c, h, s)
+    c,h,s = utils.get_geometry(size)
+    if type(stream) == disk.partition:
+        s = stream.mbr.sectors_per_cyl
+        h = stream.mbr.heads_per_cyl
+        boot.dwHiddenSectors = stream.offset//sector
+    if DEBUG&1: log("fat_mkfs C=%d, H=%d, S=%d", c, h, s)
     boot.wSectorsPerTrack = s
-    boot.wHeads = h # not used with LBA
+    boot.wHeads = h
 
-    fsi = fat32_fsinfo(offset=sector)
-    fsi.sSignature1 = b'RRaA'
-    fsi.sSignature2 = b'rrAa'
-    fsi.dwFreeClusters = fsinfo['clusters'] - 1 # root is #2
-    fsi.dwNextFreeCluster = 3 #2 is root
-    fsi.wBootSignature = 0xAA55
+    if fat_bits == 32:
+        boot.dwRootCluster = 2
+        boot.wFSISector = 1
+        boot.wBootCopySector = params.get('fat32_backup_sector', 6)
+        
+    boot.pack()
+    #~ print(boot)
+    #~ print('FAT, root, cluster #2 offsets', hex(boot.fat()), hex(boot.fat(1)), hex(boot.root()), hex(boot.dataoffs))
 
     stream.seek(0)
-    # Write boot & FSI sectors
+    # Write boot sector
     stream.write(boot.pack())
-    stream.write(fsi.pack())
-    if boot.wBootCopySector:
-        # Write their backup copies
-        stream.seek(boot.wBootCopySector*boot.wBytesPerSector)
-        stream.write(boot.pack())
+    
+    if fat_bits == 32:
+        fsi = fat32_fsinfo(offset=sector)
+        fsi.sSignature1 = b'RRaA'
+        fsi.sSignature2 = b'rrAa'
+        fsi.dwFreeClusters = fsinfo['clusters'] - 1 # root is #2
+        fsi.dwNextFreeCluster = 3 #2 is root
+        fsi.wBootSignature = 0xAA55
+        # Write FSI sector
         stream.write(fsi.pack())
+        # Write backup copies of Boot and FSI
+        if boot.wBootCopySector:
+            stream.seek(boot.wBootCopySector*boot.wBytesPerSector)
+            stream.write(boot.pack())
+            stream.write(fsi.pack())
+
     # Blank FAT1&2 area
     stream.seek(boot.fat())
     blank = bytearray(boot.wBytesPerSector)
-    for i in range(boot.dwSectorsPerFAT*2):
+    for i in range(boot.wSectorsPerFAT*2):
         stream.write(blank)
     # Initializes FAT1...
-    clus_0_2 = b'\xF8\xFF\xFF\x0F\xFF\xFF\xFF\xFF\xF8\xFF\xFF\x0F'
-    stream.seek(boot.wSectorsCount*boot.wBytesPerSector)
+    if fat_bits == 12:
+        clus_0_2 = b'%c'%boot.uchMediaDescriptor + b'\xFF\xFF' 
+    elif fat_bits == 16:
+        clus_0_2 = b'\xF8\xFF\xFF\xFF'
+    else:
+        clus_0_2 = b'\xF8\xFF\xFF\x0F\xFF\xFF\xFF\xFF\xF8\xFF\xFF\x0F'
+    stream.seek(boot.wReservedSectors*boot.wBytesPerSector)
     stream.write(clus_0_2)
     # ...and FAT2
     if boot.uchFATCopies == 2:
         stream.seek(boot.fat(1))
         stream.write(clus_0_2)
 
-    # Blank root at cluster #2
+    # Blank root (at fixed offset or cluster #)
     stream.seek(boot.root())
-    stream.write(bytearray(boot.cluster))
+    if fat_bits != 32:
+        stream.write(bytearray(boot.wMaxRootEntries*32))
+    else:
+        stream.write(bytearray(boot.cluster))
 
-    #~ fat = FAT(stream, boot.fatoffs, boot.clusters(), bitsize=32)
     stream.flush() # force committing to disk before reopening, or could be not useable!
 
     sizes = {0:'B', 10:'KiB',20:'MiB',30:'GiB',40:'TiB',50:'EiB'}
@@ -498,18 +305,18 @@ def fat32_mkfs(stream, size, sector=512, params={}):
     for k in sorted(sizes):
         if (fsinfo['required_size'] // (1<<k)) < 1024: break
 
-    free_clusters = fsinfo['clusters'] - 1
-    print("Successfully applied FAT32 to a %.02f %s volume.\n%d clusters of %.1f KB.\n%.02f %s free in %d clusters." % (fsinfo['required_size']/(1<<k), sizes[k], fsinfo['clusters'], fsinfo['cluster_size']/1024, free_clusters*boot.cluster/(1<<k), sizes[k], free_clusters))
-    print("\nFAT #1 @0x%X, Data Region @0x%X, Root (cluster #%d) @0x%X" % (boot.fatoffs, boot.cl2offset(2), 2, boot.cl2offset(2)))
+    free_clusters = fsinfo['clusters']
+    if fat_bits == 32: free_clusters -= 1 # root belongs to clusters heap in FAT32
+    if verbose: print("Successfully applied FAT%d to a %.02f %s volume.\n%d clusters of %.1f KB.\n%.02f %s free in %d clusters." % (fat_bits,fsinfo['required_size']/(1<<k), sizes[k], fsinfo['clusters'], fsinfo['cluster_size']/1024, free_clusters*boot.cluster/(1<<k), sizes[k], free_clusters))
+    if verbose: print("\nFAT #1 @0x%X, Data Region @0x%X, Root @0x%X" % (boot.fatoffs, boot.cl2offset(2), boot.root()))
 
     return 0
-
 
 
 # EXFAT CODE
 
 # Note: expanded and compressed tables generated by this functions may differ
-# from MS's FORMAT (different locales?), but Windows and CHKDSK accept them!
+# from MS's FORMAT (different locales?), but Windows and CHKDSK accepts them!
 
 # Experimenting with wrong compressed Up-Case tables showed that in many cases
 # CHKDSK accepts them and signals no error, but Windows puts the filesystem
@@ -577,59 +384,79 @@ def calc_cluster(size):
 
 
 
-#~ #####
-#~ The layout of an exFAT file system is far more complex than old FAT.
-#
-#~ At start we have a Volume Boot Record of 12 sectors made of:
-#~ - a boot sector area of 9 sectors, where the first one contains the usual
-#~   FS descriptors and boot code. However, the boot code can span sectors;
-#~ - an OEM parameter sector, which must be zeroed if unused;
-#~ - a reserved sector (MS FORMAT does not even blank it!);
-#~ - a checksum sector, filled with the same DWORD containing the calculated
-#~   checksum of the previous 11 sectors.
-#
-#~ A backup copy of these 12 sectors must follow immediately.
-#
-#~ Then the FAT region with a single FAT (except in the -actually unsupported-
-#~ T-exFAT). It hasn't to be consecutive to the previous region; however, it can't
-#~ legally lay inside the clusters heap (like NTFS $MFT) nor after it.
-#
-#~ Finally, the Data region (again, it can reside far from FAT area) where the
-#~ root directory is located.
-#
-#~ But the root directory must contain (and is normally preceeded by):
-#~ - a special Bitmap file, where allocated clusters are set;
-#~ - a special Up-Case file (compressed or uncompressed) for Unicode file name
-#~   comparisons.
-#~ Those are "special" since marked with single slots of special types (0x81, 0x82)
-#~ instead of standard file/directory slots group (0x85, 0xC0, 0xC1).
-#
-#~ FAT is set and valid only for fragmented files. However, it must be always set for
-#~ Root, Bitmap and Up-Case, even if contiguous.
-#####
+"""The layout of an exFAT file system is far more complex than old FAT.
+
+At start we have a Volume Boot Record of 12 sectors made of:
+- a boot sector area of 9 sectors, where the first one contains the usual
+  FS descriptors and boot code. However, the boot code can span sectors;
+- an OEM parameter sector, which must be zeroed if unused;
+- a reserved sector (MS FORMAT does not even blank it!);
+- a checksum sector, filled with the same DWORD containing the calculated
+  checksum of the previous 11 sectors.
+
+A backup copy of these 12 sectors must follow immediately.
+
+Then the FAT region with a single FAT (except in the -actually unsupported-
+T-exFAT). It hasn't to be consecutive to the previous region; however, it can't
+legally lay inside the clusters heap (like NTFS $MFT) nor after it.
+
+Finally, the Data region (again, it can reside far from FAT area) where the
+root directory is located.
+
+But the root directory must contain (and is normally preceeded by):
+- a special Bitmap file, where allocated clusters are set;
+- a special Up-Case file (compressed or uncompressed) for Unicode file name
+  comparisons.
+Those are "special" since marked with single slots of special types (0x81, 0x82)
+instead of standard file/directory slots group (0x85, 0xC0, 0xC1).
+
+FAT is set and valid only for fragmented files. However, it must be always set for
+Root, Bitmap and Up-Case, even if contiguous."""
+
+""" Allowed params={}:
+
+query_info
+
+if set, no format is applied but a dictionary with all allowed combinations
+of cluster sizes is returned
+
+show_info
+
+if set, prints some format informations to the console
+
+reserved_size
+
+sectors reserved to the Boot region and its backup copy (min. 24)
+
+fat_copies
+
+number of FAT tables (default: 1)
+
+dataregion_padding
+
+additional space (in bytes; default: 0) between the FAT and Data regions
+
+wanted_cluster
+
+bytes size of the cluster wanted by user. If not specified, the best value
+is selected automatically between 0.5K and 32M """
+
 def exfat_mkfs(stream, size, sector=512, params={}):
     "Make an exFAT File System on stream. Returns 0 for success."
+    verbose = params.get('show_info', 0)
+    
+    if sector not in (512, 4096):
+        if verbose: print("Fatal: only 512 or 4096 bytes sectors are supported!")
+        return -1
 
     sectors = size//sector
 
-    if 'reserved_size' in params:
-        reserved_size = params['reserved_size']*sector
-        if reserved_size < 24*sector:
-            reserved_size = 24*sector
-    else:
-        # At least 24 sectors required for Boot region & its backup
-        #~ reserved_size = 24*sector
-        reserved_size = 65536 # FORMAT default
-
-    if 'fat_copies' in params:
-        fat_copies = params['fat_copies']
-    else:
-        fat_copies = 1 # default: best setting
-
-    if 'dataregion_padding' in params:
-        dataregion_padding = params['dataregion_padding']
-    else:
-        dataregion_padding = 0 # additional space between FAT region and Data region
+    # 24 sectors are required for Boot region & its backup, but FORMAT defaults to 64K
+    reserved_size = params.get('reserved_size', 128)
+    reserved_size *= sector
+    if reserved_size < 24*sector: reserved_size = 24*sector
+    fat_copies = params.get('fat_copies', 1) # default: best setting
+    dataregion_padding = params.get('dataregion_padding', 0) # additional space between FAT region and Data region
 
     allowed = {} # {cluster_size : fsinfo}
 
@@ -647,8 +474,7 @@ def exfat_mkfs(stream, size, sector=512, params={}):
             fat_size = (4*(clusters+2)+sector-1)//sector * sector
             fat_size = (fat_size+cluster_size-1)//cluster_size * cluster_size
             required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size + dataregion_padding
-        if clusters < 1 or clusters > 0xFFFFFFFF:
-            continue
+        if clusters < 1 or clusters > 0xFFFFFFF6: continue
         fsinfo['required_size'] = required_size # space occupied by FS
         fsinfo['reserved_size'] = reserved_size # space reserved before FAT#1
         fsinfo['cluster_size'] = cluster_size
@@ -658,11 +484,11 @@ def exfat_mkfs(stream, size, sector=512, params={}):
 
     if not allowed:
         if clusters < 1:
-            print("Can't apply exFAT with less than 1 cluster!")
-            return -1
+            if verbose: print("Can't apply exFAT with less than 1 cluster!")
+            return -2
         else:
-            print("Too many clusters to apply exFAT: aborting.")
-            return -1
+            if verbose: print("Too many clusters to apply exFAT: aborting.")
+            return -3
 
     #~ print "* MKFS exFAT INFO: allowed combinations for cluster size:"
     #~ pprint.pprint(allowed)
@@ -673,8 +499,8 @@ def exfat_mkfs(stream, size, sector=512, params={}):
         if params['wanted_cluster'] in allowed:
             fsinfo = allowed[params['wanted_cluster']]
         else:
-            print("Specified cluster size of %d is not allowed for exFAT: aborting..." % params['wanted_cluster'])
-            return -1
+            if verbose: print("Specified cluster size of %d is not allowed for exFAT: aborting..." % params['wanted_cluster'])
+            return -4
     else:
         fsinfo = allowed[calc_cluster(size)]
 
@@ -682,7 +508,10 @@ def exfat_mkfs(stream, size, sector=512, params={}):
     boot.chJumpInstruction = b'\xEB\x76\x90' # JMP opcode is mandatory, or CHKDSK won't recognize filesystem!
     boot._buf[0x78:0x78+len(nodos_asm_78h)] = nodos_asm_78h # insert assembled boot code
     boot.chOemID = b'%-8s' % b'EXFAT'
-    boot.u64PartOffset = 0x3F
+    if type(stream) == disk.partition:
+        boot.u64PartOffset = stream.offset
+    else:
+        boot.u64PartOffset = 0x800
     boot.u64VolumeLength = sectors
     # We can put FAT far away from reserved area, if we want...
     boot.dwFATOffset = (reserved_size+sector-1)//sector
@@ -752,13 +581,13 @@ def exfat_mkfs(stream, size, sector=512, params={}):
     # Write boot & VBR sectors
     stream.write(boot.pack())
     # Since we haven't large boot code, all these are empty
-    empty = bytearray(512); empty[-2] = 0x55; empty[-1] = 0xAA
+    empty = bytearray(sector); empty[-2] = 0x55; empty[-1] = 0xAA
     for i in range(8):
         stream.write(empty)
     # OEM parameter sector must be totally blank if unused (=no 0xAA55 signature)
-    stream.write(bytearray(512))
+    stream.write(bytearray(sector))
     # This sector is reserved, can have any content
-    stream.write(bytearray(512))
+    stream.write(bytearray(sector))
 
     # Read the first 11 sectors and get their 32-bit checksum
     stream.seek(0)
@@ -814,94 +643,7 @@ def exfat_mkfs(stream, size, sector=512, params={}):
         if (fsinfo['required_size'] // (1<<k)) < 1024: break
 
     free_clusters = boot.dwDataRegionLength - (bitmap.u64DataLength+boot.cluster-1)//boot.cluster - (upcase.u64DataLength+boot.cluster-1)//boot.cluster - 1
-    print("Successfully applied exFAT to a %.02f %s volume.\n%d clusters of %.1f KB.\n%.02f %s free in %d clusters." % (fsinfo['required_size']/(1<<k), sizes[k], fsinfo['clusters'], fsinfo['cluster_size']/1024, free_clusters*boot.cluster/(1<<k), sizes[k], free_clusters))
-    print("\nFAT Region @0x%X, Data Region @0x%X, Root (cluster #%d) @0x%X" % (boot.fatoffs, boot.cl2offset(2), boot.dwRootCluster, boot.cl2offset(boot.dwRootCluster)))
+    if verbose: print("Successfully applied exFAT to a %.02f %s volume.\n%d clusters of %.1f KB.\n%.02f %s free in %d clusters." % (fsinfo['required_size']/(1<<k), sizes[k], fsinfo['clusters'], fsinfo['cluster_size']/1024, free_clusters*boot.cluster/(1<<k), sizes[k], free_clusters))
+    if verbose: print("\nFAT Region @0x%X, Data Region @0x%X, Root (cluster #%d) @0x%X" % (boot.fatoffs, boot.cl2offset(2), boot.dwRootCluster, boot.cl2offset(boot.dwRootCluster)))
 
     return 0
-
-
-
-if __name__ == '__main__':
-    help_s = """
-    %prog [options] <drive>
-    """
-    par = optparse.OptionParser(usage=help_s, version="%prog 1.0", description="Applies a FAT12/16/32 or exFAT File System to a disk device or file image.")
-    par.add_option("-t", "--fstype", dest="fs_type", help="try to apply the specified File System between FAT12, FAT16, FAT32 or EXFAT. Default: based on medium size.", metavar="FSTYPE", type="string")
-    par.add_option("-c", "--cluster", dest="cluster_size", help="force a specified cluster size between 512, 1024, 2048, 4096, 8192, 16384, 32768 (since MS-DOS) or 65536 bytes (Windows NT+) for FAT. exFAT permits up to 32M. Default: based on medium size. Accepts 'k' and 'm' postfix for Kibibytes and Mebibytes.", metavar="CLUSTER")
-    par.add_option("-p", "--partition", dest="part_type", help="create a single MBR or GPT partition from all disk space before formatting", metavar="PARTTYPE", type="string")
-    opts, args = par.parse_args()
-
-    if not args:
-        print("mkfat error: you must specify a target to apply a FAT12/16/32 or exFAT file system!")
-        par.print_help()
-        sys.exit(1)
-
-    dsk = vopen(args[0], 'r+b', 'disk')
-    if dsk == 'EINV':
-        print('Invalid disk or image file specified!')
-        sys.exit(1)
-
-    # Windows 10 Shell happily auto-mounts a VHD ONLY IF partitioned and formatted
-    if opts.part_type:
-        t = opts.part_type.lower()
-        if t not in ('mbr', 'gpt'):
-            print('You must specify MBR or GPT to auto partition disk space!')
-            sys.exit(1)
-        print("Creating a %s partition with all disk space..."%t)
-        if t=='mbr':
-            if dsk.size > (2<<40): 
-                print('You must specify GPT partition scheme with disks >2TB!')
-                sys.exit(1)
-            partutils.partition(dsk, 'mbr', mbr_type=0xC)
-        else:
-            partutils.partition(dsk)
-        dsk.close()
-        dsk = vopen(args[0], 'r+b', 'partition0')
-
-    params = {}
-
-    if opts.fs_type:
-        t = opts.fs_type.lower()
-        if t == 'fat12':
-            format = fat12_mkfs
-        elif t == 'fat16':
-            format = fat16_mkfs
-        elif t == 'fat32':
-            format = fat32_mkfs
-            params['fat32_allows_few_clusters'] = 1
-        elif t == 'exfat':
-            format = exfat_mkfs
-        else:
-            print("mkfat error: bad file system specified!")
-            par.print_help()
-            sys.exit(1)
-        params['wanted_fs'] = t
-    else:
-        if dsk.size < 127<<20: # 127M
-            format = fat12_mkfs
-            t = 'FAT12'
-        elif 127<<20 <= dsk.size < 2047<<20: # 2G
-            format = fat16_mkfs
-            t = 'FAT16'
-        elif 2047<<20 <= dsk.size < 126<<30: # 126G, but could be up to 8T w/ 32K cluster
-            format = fat32_mkfs
-            t = 'FAT32'
-        else:
-            format = exfat_mkfs # can be successfully applied to an 1.44M floppy, too!
-            t = 'exFAT'
-        print("%s file system auto selected..." % t)
-
-    if opts.cluster_size:
-        t = opts.cluster_size.lower()
-        if t[-1] == 'k':
-            params['wanted_cluster'] = int(opts.cluster_size[:-1])<<10
-        elif t[-1] == 'm':
-            params['wanted_cluster'] = int(opts.cluster_size[:-1])<<20
-        else:
-            params['wanted_cluster'] = int(opts.cluster_size)
-        if params['wanted_cluster'] not in [512<<i for i in range(0,17)]:
-            print("mkfat error: bad cluster size specified!")
-            par.print_help()
-            sys.exit(1)
-
-    format(dsk, dsk.size, params=params)

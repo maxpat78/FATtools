@@ -430,6 +430,8 @@ class Image(object):
         self.name = name
         self.mode = mode
 
+    def type(self): return 'VMDK'
+    
     def cache_flush(self):
         self.flush()
 
@@ -553,7 +555,7 @@ def _mk_common(name, size, block):
 
 
 
-def mk_dynamic(name, size, block=(64<<10), overwrite='no'):
+def mk_dynamic(name, size, block=(64<<10), overwrite='no', sector=512):
     "Creates an empty dynamic VMDK"
     if os.path.exists(name) and overwrite!='yes':
         raise BaseException("Can't silently overwrite a pre-existing VMDK image!")
@@ -582,7 +584,7 @@ def mk_dynamic(name, size, block=(64<<10), overwrite='no'):
 
 
 
-def mk_diff(name, base, overwrite='no'):
+def mk_diff(name, base, overwrite='no', sector=512):
     "Creates an empty differencing VMDK"
     if os.path.exists(name) and overwrite!='yes':
         raise BaseException("Can't silently overwrite a pre-existing VMDK image!")

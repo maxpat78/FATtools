@@ -18,6 +18,8 @@ class win32_disk(object):
     "Handles a Win32 disk. PLEASE NOTE: due to locking mechanism, the Win32 HANDLE is here UNIQUE - closing once, closes it everywhere."
     open_handles = {}
 
+    def type(self): return 'win32disk'
+    
     def __str__ (self):
         return "Win32 Disk Handle %Xh for %s, mode '%s'" % (self.handle, self.name, self.mode)
 
@@ -127,6 +129,8 @@ class disk(object):
     end followed by read returns no error."""
     def __str__ (self):
         return "Python disk '%s' (mode '%s') @%016Xh" % (self._file.name, self.mode, self.pos)
+        
+    def type(self): return 'disk'
 
     def __init__(self, name, mode='rb', buffering=0):
         "'name' is the name of a file or device to open or, if mode is 'ramdisk', a BytesIO object with raw disk data"
@@ -370,6 +374,8 @@ class partition(object):
     "Emulates a partition using disk object"
     def __str__ (self):
         return "Python partition '%s' (offset=%016Xh, size=%d, mode '%s') @%016Xh" % (self.disk._file.name, self.offset, self.size, self.disk.mode, self.pos)
+        
+    def type(self): return 'partition'
 
     def __init__(self, disk, offset, size):
         assert size != 0

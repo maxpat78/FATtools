@@ -52,7 +52,7 @@ class GPT(object):
     
     __getattr__ = utils.common_getattr
 
-    def pack(self):
+    def pack(self, sector=512):
         "Updates internal buffer"
         for i in self.partitions:
             for k, v in list(i._kv.items()):
@@ -61,7 +61,7 @@ class GPT(object):
         for k, v in list(self._kv.items()):
             self._buf[k:k+struct.calcsize(v[1])] = struct.pack(v[1], getattr(self, v[0]))
         self._crc32()
-        return self._buf
+        return self._buf+bytearray(sector-len(self._buf))
 
     def __str__ (self):
         return utils.class2str(self, "GPT Header @%X\n" % self._pos)

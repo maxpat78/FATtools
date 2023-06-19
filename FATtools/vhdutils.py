@@ -22,8 +22,8 @@ A DIFFERENCING VHD is a dynamic image containing only new or modified blocks
 of a parent VHD image (fixed, dynamic or differencing itself). The block
 bitmap must be checked to determine which sectors are in use.
 
-Since offsets are represented in sectors, the BAT can address sectors in a range
-up to 2^32-1 or about 2 TiB.
+Since offsets are represented in sectors, the BAT can address sectors in a
+range up to 2^32-1 or about 2 TiB.
 The disk image itself is shorter due to VHD internal structures (assuming 2^20
 blocks of default size, the first 3 sectors are occupied by heaeders, 4 MiB
 by the BAT and 512 MiB by bitmap sectors.
@@ -246,11 +246,11 @@ class BAT(object):
                 self.isvalid = -3 # block address beyond file's end detected
                 if selftest: break
                 print("ERROR: BAT[%d] offset (sector %X) exceeds allocated file size" %(i, a))
-            if (a*512-first_block)%raw_size:
+            if (a*512-first_block)%raw_size: # it's valid, i.e. when a missing Parent Locator sector get fixed!
                 if DEBUG&16: log("%s: BAT[%d] offset (sector %X) is not aligned", self, i, a)
-                self.isvalid = -4 # block address not aligned
-                if selftest: break
-                print("ERROR: BAT[%d] offset (sector %X) is not aligned, overlapping blocks" %(i, a))
+                #~ self.isvalid = -4 # block address not aligned
+                #~ if selftest: break
+                print("WARNING: BAT[%d] offset (sector %X) is not aligned, overlapping blocks" %(i, a))
             if a*512 > last_block or a*512+raw_size > (ssize-512):
                 if DEBUG&16: log("%s: block %d offset (sector %X) overlaps Footer", self, i, a)
                 self.isvalid = -5
@@ -271,10 +271,10 @@ class ParentLocator(object):
     "Element in the Dynamic Header Parent Locators array"
     layout = { # { offset: (name, unpack string) }
     0x00: ('dwPlatformCode', '4s'), # W2ru, W2ku in Windows
-    0x04: ('dwPlatformDataSpace', '>I'), # sectors needed to store the locator
+    0x04: ('dwPlatformDataSpace', '>I'), # bytes needed to store the Locator sector(s)
     0x08: ('dwPlatformDataLength', '>I'), # locator length in bytes
     0x0C: ('dwReserved', '>I'),
-    0x10: ('dwPlatformDataOffset', '>Q'), # absolute file offset where locator is stored
+    0x10: ('u64PlatformDataOffset', '>Q'), # absolute file offset where locator is stored
     } # Size = (24 byte)
     
     def __init__ (self, s):
@@ -396,7 +396,7 @@ class Image(object):
                     loc = self.header.locators[i]
                     if loc.dwPlatformCode == b'W2ru': break
             if loc:
-                    self.stream.seek(loc.dwPlatformDataOffset)
+                    self.stream.seek(loc.u64PlatformDataOffset)
                     parent = self.stream.read(loc.dwPlatformDataLength)
                     parent = parent.decode('utf_16_le') # This in Windows format!
                     if DEBUG&16: log("%s: init trying to access parent image '%s'", self.name, parent)
@@ -407,10 +407,11 @@ class Image(object):
                 hparent = hparent[:hparent.find('\0')]
                 raise BaseException("VHD Differencing Image parent '%s' not found!" % hparent)
             self.Parent = Image(parent, "rb")
-            parent_ts = int(time.mktime(time.gmtime(os.stat(parent).st_mtime)))-946681200
-            if parent_ts != self.header.dwParentTimeStamp:
-                if DEBUG&16: log("TimeStamps: parent=%d self=%d",  parent_ts, self.header.dwParentTimeStamp)
-                raise BaseException("Differencing Image timestamp not matched: parent was modified after link!")
+            # Windows 11 does NOT check stored timestamps (nor effective creation time)!
+            #~ parent_ts = int(time.mktime(time.gmtime(os.stat(parent).st_mtime)))-946681200
+            #~ if parent_ts != self.header.dwParentTimeStamp:
+                #~ if DEBUG&16: log("TimeStamps: parent=%d self=%d",  parent_ts, self.header.dwParentTimeStamp)
+                #~ raise BaseException("Differencing Image timestamp not matched: parent was modified after link!")
             if self.Parent.footer.sUniqueId != self.header.sParentUniqueId:
                 raise BaseException("Differencing Image parent's UUID not matched!")
             self.read = self.read1 # assigns special read and write functions
@@ -424,6 +425,8 @@ class Image(object):
         self.size = self.footer.u64CurrentSize
         self.seek(0)
 
+    def type(self): return 'VHD'
+    
     def cache_flush(self):
         self.stream.flush()
 
@@ -669,7 +672,7 @@ def mk_crc(s):
     return struct.pack('>i', ~crc)
 
 
-def mk_fixed(name, size, overwrite='no'):
+def mk_fixed(name, size, overwrite='no', sector=512):
     "Creates an empty fixed VHD or transforms a previous image if 'size' is -1"
     if size > MAX_VHD_SIZE:
         raise BaseException("Can't create a VHD >2040 GiB!")
@@ -709,7 +712,7 @@ def mk_fixed(name, size, overwrite='no'):
 
 
 
-def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no'):
+def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no', sector=512):
     "Creates an empty dynamic VHD"
     if size > MAX_VHD_SIZE:
         raise BaseException("Can't create a VHD >2040 GiB!")
@@ -741,15 +744,15 @@ def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no'):
     h.u64DataOffset = 0xFFFFFFFFFFFFFFFF
     h.u64TableOffset = 1536
     h.dwVersion = 0x10000
-    h.dwMaxTableEntries = size//block
+    h.dwMaxTableEntries = (size+block-1)//block # blocks needed
     h.dwBlockSize = block
     
     f.write(h.pack()) # stores dynamic header
-    bmpsize = (4*(size//block)+511)//512*512 # must span full sectors
+    bmpsize = (4*h.dwMaxTableEntries+511)//512*512 # must span full sectors
     # Given a maximum virtual size in upto, the BAT is enlarged
     # for future VHD expansion
     if upto > size:
-        bmpsize = (4*(upto//block)+511)//512*512
+        bmpsize = (4*((upto+block-1)//block)+511)//512*512
         if DEBUG&16: log("BAT extended to %d blocks, VHD is resizable up to %.02f MiB", bmpsize//4, float(upto//(1<<20)))
     f.write(bmpsize*b'\xFF') # initializes BAT
     f.write(ft.pack()) # stores footer
@@ -757,14 +760,14 @@ def mk_dynamic(name, size, block=(2<<20), upto=0, overwrite='no'):
 
 
 
-def mk_diff(name, base, overwrite='no'):
+def mk_diff(name, base, overwrite='no', sector=512):
     "Creates an empty differencing VHD"
     if os.path.exists(name) and overwrite!='yes':
         raise BaseException("Can't silently overwrite a pre-existing VHD image!")
     ima = Image(base)
-    # Parent's unique references: UUID and last modification time
+    # Parent's unique references: UUID and creation time
     parent_uuid = ima.footer.sUniqueId
-    parent_ts = int(time.mktime(time.gmtime(os.stat(base).st_mtime)))-946681200
+    parent_ts = ima.footer.dwTimestamp
     ima.footer.dwDiskType = 4
     ima.footer.dwCreatorApp = b'Py  '
     ima.footer.dwCreatorVer = 0x3000A
@@ -777,14 +780,15 @@ def mk_diff(name, base, overwrite='no'):
     f = myfile(name, 'wb')
     f.write(ima.footer.pack()) # stores footer copy
 
-    rel_base = os.path.relpath(base, os.path.splitdrive(base)[0]).encode('utf_16_le')
-    if rel_base[0] != '.': rel_base = b'.\\'+rel_base
+    rel_base = os.path.relpath(base, os.path.splitdrive(base)[0])
+    if rel_base[0] != '.': rel_base = '.\\'+rel_base
+    rel_base = rel_base.encode('utf_16_le')
     abs_base = os.path.abspath(base).encode('utf_16_le')
     be_base = os.path.abspath(base).encode('utf_16_be')+b'\0\0'
     
     ima.header.sParentUniqueId = parent_uuid
-    ima.header.dwParentTimeStamp = parent_ts
-    ima.header.sParentUnicodeName = be_base
+    ima.header.dwParentTimeStamp = parent_ts # Windows 11, however, does NOT check stored timestamps (nor effective creation time)!
+    ima.header.sParentUnicodeName = be_base # Windows fixes this, but is it not mandatory (see below)
     
     loc = ima.header.locators
 
@@ -792,22 +796,27 @@ def mk_diff(name, base, overwrite='no'):
         loc[i].dwPlatformCode = b'\0\0\0\0'
         loc[i].dwPlatformDataSpace = 0
         loc[i].dwPlatformDataLength = 0
-        loc[i].dwPlatformDataOffset = 0
+        loc[i].u64PlatformDataOffset = 0
 
     bmpsize=((ima.header.dwMaxTableEntries*4+511)//512)*512
 
+    # Windows needs *at least* a valid *file* name in W2ru field!
+    #
     # Windows 10 stores the relative pathname with '.\' for current dir
     # It stores both absolute and relative pathnames, tough it isn't
     # strictly necessary (but disk manager silently fixes this)
+    #
+    # Old ASCII Wi2k and Wi2r locators are not recognized
     loc[0].dwPlatformCode = b'W2ru'
     loc[0].dwPlatformDataSpace = ((len(rel_base)+511)//512)*512
     loc[0].dwPlatformDataLength = len(rel_base)
-    loc[0].dwPlatformDataOffset = 1536+bmpsize
+    loc[0].u64PlatformDataOffset = 1536+bmpsize
 
+    # Windows 11 detects a VHD as damaged if absolute pathname stored here is wrong!!
     loc[1].dwPlatformCode = b'W2ku'
     loc[1].dwPlatformDataSpace = ((len(abs_base)+511)//512)*512
     loc[1].dwPlatformDataLength = len(abs_base)
-    loc[1].dwPlatformDataOffset = loc[0].dwPlatformDataOffset+loc[0].dwPlatformDataSpace
+    loc[1].u64PlatformDataOffset = loc[0].u64PlatformDataOffset+loc[0].dwPlatformDataSpace
         
     f.write(ima.header.pack()) # stores dynamic header
 

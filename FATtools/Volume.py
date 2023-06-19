@@ -8,10 +8,10 @@
 import os, time, sys, re, glob, fnmatch
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 from io import BytesIO
-from FATtools import disk, utils, FAT, exFAT, partutils
-from FATtools import vhdutils, vhdxutils, vdiutils, vmdkutils
+from FATtools import disk, utils, FAT, exFAT
+from FATtools.partutils import MBR, GPT
+from FATtools import utils, vhdutils, vhdxutils, vdiutils, vmdkutils
 from FATtools.debug import log
-
 
 
 def vopen(path, mode='rb', what='auto'):
@@ -21,6 +21,7 @@ def vopen(path, mode='rb', what='auto'):
     system. 'path' can be: 1) a file or device path; 2) a FATtools disk or virtual
     disk object; 3) a BytesIO object if mode is 'ramdisk'."""
     if DEBUG&2: log("vopen in '%s' mode", what)
+    PHYS_SECTOR = 512 # defualt physical sector size
     if type(path) in (disk.disk, vhdutils.Image, vhdxutils.Image, vdiutils.Image, vmdkutils.Image, BytesIO):
         if isinstance(path, BytesIO):
             # Opens a Ram Disk with a BytesIO object
@@ -38,18 +39,19 @@ def vopen(path, mode='rb', what='auto'):
             d = vhdutils.Image(path, mode)
         elif path.lower().endswith('.vhdx'): # VHDX image
             d = vhdxutils.Image(path, mode)
+            PHYS_SECTOR = d.metadata.physical_sector_size
         elif path.lower().endswith('.vdi'): # VDI image
             d = vdiutils.Image(path, mode)
         elif path.lower().endswith('.vmdk'): # VMDK image
             d = vmdkutils.Image(path, mode)
         else:
             d = disk.disk(path, mode) # disk or disk image
-        if DEBUG&2: log("Opened disk: %s", d)
+        if DEBUG&2: log("Opened disk type '%s', size %Xh (%Xh sectors) ", d, d.size, d.size//PHYS_SECTOR)
     d.seek(0)
     if what == 'disk':
         return d
     # Tries to access a partition
-    mbr = partutils.MBR(d.read(512), disksize=d.size)
+    mbr = MBR(d.read(PHYS_SECTOR), disksize=d.size)
     if DEBUG&2: log("Opened MBR: %s", mbr)
     valid_mbr=1
     n = mbr.partitions[0].size()
@@ -80,21 +82,21 @@ def vopen(path, mode='rb', what='auto'):
             return 'EINVMBR'
     # Tries to open MBR or GPT partition
     if DEBUG&2: log("Ok, valid MBR")
-    partition=0
+    partition=0 # Windows 11 makes a reserved part first
     if what.startswith('partition'):
         partition = int(re.match('partition(\d+)', what).group(1))
     if DEBUG&2: log("Trying to open partition #%d", partition)
     part = None
     if mbr.partitions[0].bType == 0xEE: # GPT
-        d.seek(512)
-        gpt = partutils.GPT(d.read(512), 512)
+        d.seek(PHYS_SECTOR)
+        gpt = GPT(d.read(PHYS_SECTOR), PHYS_SECTOR)
         if DEBUG&2: log("Opened GPT Header: %s", gpt)
-        d.seek(gpt.u64PartitionEntryLBA*512)
+        d.seek(gpt.u64PartitionEntryLBA*PHYS_SECTOR)
         blk = d.read(gpt.dwNumberOfPartitionEntries * gpt.dwNumberOfPartitionEntries)
         gpt.parse(blk)
         blocks = gpt.partitions[partition].u64EndingLBA - gpt.partitions[partition].u64StartingLBA + 1
         if DEBUG&2: log("Opening Partition #%d: %s", partition, gpt.partitions[partition])
-        part = disk.partition(d, gpt.partitions[partition].u64StartingLBA*512, blocks*512)
+        part = disk.partition(d, gpt.partitions[partition].u64StartingLBA*PHYS_SECTOR, blocks*PHYS_SECTOR)
         part.seek(0)
         part.mbr = mbr
         part.gpt = gpt
@@ -103,14 +105,16 @@ def vopen(path, mode='rb', what='auto'):
         index=0
         if partition > 0:
             index = 1 # opens Extended Partition
+        if DEBUG&2: log("Opening partition @%016x (size %016x)", mbr.partitions[index].offset(), mbr.partitions[index].size())
+        if DEBUG&2: log("Last sector CHS: %d-%d-%d", *utils.raw2chs(mbr.partitions[index].sLastSectorCHS))
         part = disk.partition(d, mbr.partitions[index].offset(), mbr.partitions[index].size())
-        if DEBUG&2: log("Opened %s partition @%016x (LBA %016x) %s", ('Primary', 'Extended')[index], mbr.partitions[index].chsoffset(), mbr.partitions[index].lbaoffset(), partutils.raw2chs(mbr.partitions[index].sFirstSectorCHS))
+        if DEBUG&2: log("Opened %s partition @%016xh (LBA %016xh) %s", ('Primary', 'Extended')[index], mbr.partitions[index].chsoffset(), mbr.partitions[index].lbaoffset(), utils.raw2chs(mbr.partitions[index].sFirstSectorCHS))
         if partition > 0:
             wanted = 1
             extpart = part
             while wanted <=partition:
-                bs = extpart.read(512)
-                ebr = partutils.MBR(bs, disksize=d.size) # reads Extended Boot Record
+                bs = extpart.read(PHYS_SECTOR)
+                ebr = MBR(bs, disksize=d.size) # reads Extended Boot Record
                 if DEBUG&2: log("Opened EBR: %s", ebr)
                 if ebr.wBootSignature != 0xAA55:
                     if DEBUG&2: log("Invalid Extended Boot Record")
@@ -118,15 +122,15 @@ def vopen(path, mode='rb', what='auto'):
                         return d
                     else:
                         return 'EINV'
-                if DEBUG&2: log("Got partition @%016x (@%016x rel.) %s", ebr.partitions[0].chsoffset(), ebr.partitions[0].lbaoffset(), partutils.raw2chs(ebr.partitions[0].sFirstSectorCHS))
-                if DEBUG&2: log("Next logical partition @%016x (@%016x rel.) %s", ebr.partitions[1].chsoffset(), ebr.partitions[1].lbaoffset(), partutils.raw2chs(ebr.partitions[1].sFirstSectorCHS))
+                if DEBUG&2: log("Got partition @%016xh (@%016xh rel.) %s", ebr.partitions[0].chsoffset(), ebr.partitions[0].lbaoffset(), utils.raw2chs(ebr.partitions[0].sFirstSectorCHS))
+                if DEBUG&2: log("Next logical partition @%016xh (@%016xh rel.) %s", ebr.partitions[1].chsoffset(), ebr.partitions[1].lbaoffset(), utils.raw2chs(ebr.partitions[1].sFirstSectorCHS))
                 if wanted == partition:
-                    if DEBUG&2: log("Opening Logical Partition #%d @%016x %s", partition, ebr.partitions[0].offset(), partutils.raw2chs(ebr.partitions[0].sFirstSectorCHS))
+                    if DEBUG&2: log("Opening Logical Partition #%d @%016xh %s", partition, ebr.partitions[0].offset(), utils.raw2chs(ebr.partitions[0].sFirstSectorCHS))
                     part = disk.partition(d, ebr.partitions[0].offset(), ebr.partitions[0].size())
                     part.seek(0)
                     break
                 if ebr.partitions[1].dwFirstSectorLBA and ebr.partitions[1].dwTotalSectors:
-                    if DEBUG&2: log("Scanning next Logical Partition @%016x %s size %.02f MiB", ebr.partitions[1].offset(), partutils.raw2chs(ebr.partitions[1].sFirstSectorCHS), ebr.partitions[1].size()//(1<<20))
+                    if DEBUG&2: log("Scanning next Logical Partition @%016xh %s size %.02f MiB", ebr.partitions[1].offset(), utils.raw2chs(ebr.partitions[1].sFirstSectorCHS), ebr.partitions[1].size()//(1<<20))
                     extpart = disk.partition(d, ebr.partitions[1].offset(), ebr.partitions[1].size())
                 else:
                     break
@@ -178,6 +182,7 @@ def openvolume(part):
     part.seek(0)
     bs = part.read(512)
     
+    if DEBUG&2: log("Boot sector:\n%s", FAT.boot_fat16(bs))
     fstyp = utils.FSguess(FAT.boot_fat16(bs)) # warning: if we call this a second time on the same Win32 disk, handle is unique and seek set already!
     if DEBUG&2: log("FSguess guessed FS type: %s", fstyp)
 
@@ -319,7 +324,7 @@ def copy_in(src_list, dest, callback=None, attributes=None, chunk_size=1<<20):
         else:
             pass
 
-def copy_tree_in(base, dest, callback=None, attributes=None, chunk_size=1<<20):
+def copy_tree_in(base, dest, callback=None, attributes=None, chunk_size=1<<20, uppercase=0):
     """Copy recursively files and directories under real 'base' path into
     virtual 'dest' directory table, 'chunk_size' bytes at a time, calling callback function if provided
     and preserving date and times if desired."""
@@ -345,6 +350,7 @@ def copy_tree_in(base, dest, callback=None, attributes=None, chunk_size=1<<20):
             src = os.path.join(root, file)
             fp = open(src, 'rb')
             st = os.stat(src)
+            if uppercase: file = file.upper() # force name to upper case
             # Create target, preallocating all clusters
             dst = target_dir.create(file, (st.st_size+dest.boot.cluster-1)//dest.boot.cluster)
             if callback: callback(src[len(base)+1:]) # strip base path

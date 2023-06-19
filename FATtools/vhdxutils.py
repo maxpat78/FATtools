@@ -750,6 +750,8 @@ class Image(object):
             if DEBUG&16: log("Opened Parent VHDX %s", ima.name)
         self.seek(0)
 
+    def type(self): return 'VHDX'
+    
     def _update_headers(self, op):
         "Updates and writes back the VHDX headers once if write/log operations occurred"
         h = self.header
@@ -1042,7 +1044,7 @@ class Image(object):
             self.bmp.flush()
 
 
-def mk_dynamic(name, size, block=(32<<20), upto=0, overwrite='no', _fparams=0):
+def mk_dynamic(name, size, block=(32<<20), upto=0, overwrite='no', _fparams=0, sector=512):
     "Creates an empty dynamic VHDX"
     if os.path.exists(name) and overwrite!='yes':
         raise BaseException("Can't silently overwrite a pre-existing VHDX image!")
@@ -1056,7 +1058,7 @@ def mk_dynamic(name, size, block=(32<<20), upto=0, overwrite='no', _fparams=0):
     # Identifier
     fti = FileTypeIdentifier()
     fti.sSignature = b'vhdxfile'
-    fti.sCreator = 'Python 3.9'.encode('utf-16le')
+    fti.sCreator = 'Python 3'.encode('utf-16le')
     f.write(fti.pack()) # stores File Type Identifier
 
     # Headers 1 & 2
@@ -1085,7 +1087,7 @@ def mk_dynamic(name, size, block=(32<<20), upto=0, overwrite='no', _fparams=0):
     r._buf[16:48] = rte.pack()
     rte.sGuid = RegionGUIDs[1].bytes_le # BAT
     rte.u64FileOffset = 0x300000
-    rte.dwLength = get_bat_facts(size, block, 512, _fparams!=2)[0]
+    rte.dwLength = get_bat_facts(size, block, sector, _fparams!=2)[0]
     r._buf[48:80] = rte.pack()
     writea(f, r.pack(), 65536) # stores Region Table header, aligned at 64K
     writea(f, r.pack(), 65536) # stores its copy
@@ -1138,7 +1140,7 @@ def mk_dynamic(name, size, block=(32<<20), upto=0, overwrite='no', _fparams=0):
     f.write(m.pack())
 
     f.seek(0x210010)
-    f.write(struct.pack('<I', 512)) # Must be 512 or 4096 bytes
+    f.write(struct.pack('<I', sector)) # Must be 512 or 4096 bytes
     
     f.seek(0x200000+128)
     # Physical Sector Size
@@ -1147,7 +1149,7 @@ def mk_dynamic(name, size, block=(32<<20), upto=0, overwrite='no', _fparams=0):
     f.write(m.pack())
 
     f.seek(0x210014)
-    f.write(struct.pack('<I', 4096)) # Must be 512 or 4096 bytes
+    f.write(struct.pack('<I', sector)) # Must be 512 or 4096 bytes
     # NOTE: Windows 10 sets this to 4096 for 1 TB disk
 
     f.seek(0x200000+160)
@@ -1169,7 +1171,7 @@ def mk_dynamic(name, size, block=(32<<20), upto=0, overwrite='no', _fparams=0):
     f.close()
 
     
-def mk_fixed(name, size, block=(32<<20), upto=0, overwrite='no'):
+def mk_fixed(name, size, block=(32<<20), upto=0, overwrite='no', sector=512):
     "Creates an empty fixed VHDX"
     if DEBUG&16: log("making new Fixed VHDX '%s' of %.02f MiB with block of %d bytes", name, float(size//(1<<20)), block)
     mk_dynamic(name, size, block, upto, overwrite, _fparams=1) # LeaveBlocksAllocated flag
@@ -1187,7 +1189,7 @@ def mk_fixed(name, size, block=(32<<20), upto=0, overwrite='no'):
     f.close()
 
 
-def mk_diff(name, base, block=(2<<20), overwrite='no'):
+def mk_diff(name, base, block=(2<<20), overwrite='no', sector=512):
     "Creates an empty differencing VHDX"
     if os.path.exists(name) and overwrite!='yes':
         raise BaseException("Can't silently overwrite a pre-existing VHDX image!")

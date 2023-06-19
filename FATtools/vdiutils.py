@@ -227,6 +227,8 @@ class Image(object):
         self.size = self.header.u64CurrentSize
         self.seek(0)
 
+    def type(self): return 'VDI'
+    
     def has_block(self, i):
         "Tests if a block is effectively allocated by the image or its parent"
         if self.bat[i] != 0xFFFFFFFF: # unallocated
@@ -365,7 +367,7 @@ def _mk_common(name, size, block, overwrite):
     h = Header()
     s='<<< Python3 vdiutils VDI Disk Image >>>\n'
     h.dwBlockSize = block
-    h.dwTotalBlocks = size//block
+    h.dwTotalBlocks = (size+block-1)//block
     h.sDescriptor = s.encode()+bytearray(64-len(s))
     h.dwSignature = 0xBEDA107F
     h.dwVersion = 0x10001
@@ -382,7 +384,7 @@ def _mk_common(name, size, block, overwrite):
     return h
 
 
-def mk_fixed(name, size, block=(1<<20), overwrite='no'):
+def mk_fixed(name, size, block=(1<<20), overwrite='no', sector=512):
     "Creates an empty fixed VDI or transforms a previous image"
     h = _mk_common(name, size, block, overwrite)
     h.dwAllocatedBlocks = size//block
@@ -408,7 +410,7 @@ def mk_fixed(name, size, block=(1<<20), overwrite='no'):
     f.flush(); f.close()
 
 
-def mk_dynamic(name, size, block=(1<<20), overwrite='no'):
+def mk_dynamic(name, size, block=(1<<20), overwrite='no', sector=512):
     "Creates an empty dynamic VDI"
     h = _mk_common(name, size, block, overwrite)
     h.dwImageType = 1
@@ -427,7 +429,7 @@ def mk_dynamic(name, size, block=(1<<20), overwrite='no'):
     f.flush(); f.close()
 
 
-def mk_diff(name, base, overwrite='no'):
+def mk_diff(name, base, overwrite='no', sector=512):
     "Creates an empty differencing VDI"
     if os.path.exists(name) and overwrite!='yes':
         raise BaseException("Can't silently overwrite a pre-existing VDI image!")

@@ -25,17 +25,16 @@ class boot_fat32(object):
     0x03: ('chOemID', '8s'),
     0x0B: ('wBytesPerSector', '<H'),
     0x0D: ('uchSectorsPerCluster', 'B'),
-    0x0E: ('wSectorsCount', '<H'), # reserved sectors (min 32?)
+    0x0E: ('wReservedSectors', '<H'), # reserved sectors before 1st FAT (min 9)
     0x10: ('uchFATCopies', 'B'),
     0x11: ('wMaxRootEntries', '<H'),
-    0x13: ('wTotalSectors', '<H'),
-    0x15: ('uchMediaDescriptor', 'B'),
+    0x13: ('wTotalSectors', '<H'), # volume sectors if < 65536, or zero
+    0x15: ('uchMediaDescriptor', 'B'), # F8h HDD, F0h=1.44M floppy, F9h=720K floppy
     0x16: ('wSectorsPerFAT', '<H'), # not used, see 24h instead
     0x18: ('wSectorsPerTrack', '<H'),
     0x1A: ('wHeads', '<H'),
-    0x1C: ('wHiddenSectors', '<H'),
-    0x1E: ('wTotalHiddenSectors', '<H'),
-    0x20: ('dwTotalLogicalSectors', '<I'),
+    0x1C: ('dwHiddenSectors', '<I'), # disk sectors preceding this boot sector
+    0x20: ('dwTotalSectors', '<I'), # volume sectors if > 65535, or zero
     0x24: ('dwSectorsPerFAT', '<I'),
     0x28: ('wMirroringFlags', '<H'), # bits 0-3: active FAT, it bit 7 set; else: mirroring as usual
     0x2A: ('wVersion', '<H'),
@@ -69,11 +68,11 @@ class boot_fat32(object):
         # Cluster size (bytes)
         self.cluster = self.wBytesPerSector * self.uchSectorsPerCluster
         # Offset of the 1st FAT copy
-        self.fatoffs = self.wSectorsCount * self.wBytesPerSector + self._pos
+        self.fatoffs = self.wReservedSectors * self.wBytesPerSector + self._pos
         # Data area offset (=cluster #2)
         self.dataoffs = self.fatoffs + self.uchFATCopies * self.dwSectorsPerFAT * self.wBytesPerSector + self._pos
         # Number of clusters represented in this FAT (if valid buffer)
-        self.fatsize = self.dwTotalLogicalSectors//self.uchSectorsPerCluster
+        self.fatsize = self.dwTotalSectors//self.uchSectorsPerCluster
         if self.stream:
             self.fsinfo = fat32_fsinfo(stream=self.stream, offset=self.wFSISector*self.cluster)
         else:
@@ -94,7 +93,7 @@ class boot_fat32(object):
     def clusters(self):
         "Returns the number of clusters in the data area"
         # Total sectors minus sectors preceding the data area
-        return (self.dwTotalLogicalSectors - (self.dataoffs//self.wBytesPerSector)) // self.uchSectorsPerCluster
+        return (self.dwTotalSectors - (self.dataoffs//self.wBytesPerSector)) // self.uchSectorsPerCluster
 
     def cl2offset(self, cluster):
         "Returns the real offset of a cluster"
@@ -150,7 +149,7 @@ class boot_fat16(object):
     0x03: ('chOemID', '8s'),
     0x0B: ('wBytesPerSector', '<H'),
     0x0D: ('uchSectorsPerCluster', 'B'),
-    0x0E: ('wSectorsCount', '<H'),
+    0x0E: ('wReservedSectors', '<H'), # reserved sectors before 1st FAT (min 1, the boot; Windows often defaults to 8)
     0x10: ('uchFATCopies', 'B'),
     0x11: ('wMaxRootEntries', '<H'),
     0x13: ('wTotalSectors', '<H'),
@@ -158,10 +157,10 @@ class boot_fat16(object):
     0x16: ('wSectorsPerFAT', '<H'), #DWORD in FAT32
     0x18: ('wSectorsPerTrack', '<H'),
     0x1A: ('wHeads', '<H'),
-    0x1C: ('dwHiddenSectors', '<I'), # Here differs from FAT32
-    0x20: ('dwTotalLogicalSectors', '<I'),
+    0x1C: ('dwHiddenSectors', '<I'),
+    0x20: ('dwTotalSectors', '<I'),
     0x24: ('chPhysDriveNumber', 'B'),
-    0x25: ('uchCurrentHead', 'B'),
+    0x25: ('uchCurrentHead', 'B'), # unused
     0x26: ('uchSignature', 'B'), # 0x28 or 0x29
     0x27: ('dwVolumeID', '<I'),
     0x2B: ('sVolumeLabel', '11s'),
@@ -185,10 +184,10 @@ class boot_fat16(object):
         # Cluster size (bytes)
         self.cluster = self.wBytesPerSector * self.uchSectorsPerCluster
         # Offset of the 1st FAT copy
-        self.fatoffs = self.wSectorsCount * self.wBytesPerSector + self._pos
+        self.fatoffs = self.wReservedSectors * self.wBytesPerSector + self._pos
         # Number of clusters represented in this FAT
         # Here the DWORD field seems to be set only if WORD one is too small
-        self.fatsize = (self.dwTotalLogicalSectors or self.wTotalSectors)//self.uchSectorsPerCluster
+        self.fatsize = (self.dwTotalSectors or self.wTotalSectors)//self.uchSectorsPerCluster
         # Offset of the fixed root directory table (immediately after the FATs)
         self.rootoffs = self.fatoffs + self.uchFATCopies * self.wSectorsPerFAT * self.wBytesPerSector + self._pos
         # Data area offset (=cluster #2)
@@ -211,7 +210,7 @@ class boot_fat16(object):
     def clusters(self):
         "Returns the number of clusters in the data area"
         # Total sectors minus sectors preceding the data area
-        return ((self.dwTotalLogicalSectors or self.wTotalSectors) - (self.dataoffs//self.wBytesPerSector)) // self.uchSectorsPerCluster
+        return ((self.dwTotalSectors or self.wTotalSectors) - (self.dataoffs//self.wBytesPerSector)) // self.uchSectorsPerCluster
 
     def cl2offset(self, cluster):
         "Returns the real offset of a cluster"
@@ -230,13 +229,14 @@ class boot_fat16(object):
 # NOTE: limit decoded dictionary size! Zero or {}.popitem()?
 class FAT(object):
     "Decodes a FAT (12, 16, 32 o EX) table on disk"
-    def __init__ (self, stream, offset, clusters, bitsize=32, exfat=0):
+    def __init__ (self, stream, offset, clusters, bitsize=32, exfat=0, sector=512):
+        self.sector = sector # physical sector size
         self.stream = stream
         self.size = clusters # total clusters in the data area (max = 2^x - 11)
         self.bits = bitsize # cluster slot bits (12, 16 or 32)
         self.offset = offset # relative FAT offset (1st copy)
         # CAVE! This accounts the 0-1 unused cluster index?
-        self.offset2 = offset + (((clusters*bitsize+7)//8)+511)//512*512 # relative FAT offset (2nd copy)
+        self.offset2 = offset + (((clusters*bitsize+7)//8)+(self.sector-1))//self.sector*self.sector # relative FAT offset (2nd copy)
         self.exfat = exfat # true if exFAT (aka FAT64)
         self.reserved = 0x0FF7
         self.bad = 0x0FF7

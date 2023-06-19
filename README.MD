@@ -9,6 +9,8 @@ Moreover:
 - it is able to open disk partitioned with both MBR or GPT and to help in partitioning
 - it can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images
 - it can handle RAW disk images and BytesIO "RamDisk" images, also.
+- it supports 4K sectors
+- it can handle large clusters (128K, 256K) with FAT formats
 
 Following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not regularly tested):
 - sector aligned read/writes with both file images and real disks
@@ -43,10 +45,10 @@ Code is GPLed (look at GPL.TXT).
 
 The package installs a `fattools` script, you can use this to perform simple command line operations.
 
-- to create a dynamic 1TB VHD disk image with a single GPT partition and format it with exFAT:
+- to create a dynamic 8TB VHDX disk image with a single GPT partition and format it with exFAT:
 ```
-fattools mkvdisk -s 1T image.vhd
-fattools mkfat -t exfat -p gpt image.vhd
+fattools mkvdisk -s 8T --large-sectors image.vhdx
+fattools mkfat -t exfat -p gpt image.vhdx
 ```
 
 - to create a differencing VDI disk image:

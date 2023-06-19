@@ -29,96 +29,44 @@ FF FF FF and a partition type of 0xEE."""
 
 import struct, os
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
-from FATtools import utils
+from FATtools.mkfat import fat_mkfs
 from FATtools.gptutils import *
-
+from FATtools.utils import *
 from FATtools.debug import log
 
-def chs2lba(c, h, s, max_hpc=16, max_spc=63):
-	# Max sectors per cylinder (track): 63
-	if max_spc < 1 or max_spc > 63:
-		return -1
-	# Max heads per cyclinder (track): 255
-	if max_hpc < 1 or max_hpc > 255:
-		return -2
-	if s < 1 or s > max_spc:
-		return -0x10
-	if h < 0 or h > max_hpc:
-		return -0x20
-	return (c*max_hpc+h)*max_spc + (s-1)
+import logging
+logging.basicConfig(filename='partutils.log', filemode='w')
 
-def lba2chs(lba, hpc=0):
-    spc = 63
-    if not hpc:
-        for hpc in (16,32,64,128,255):
-            if lba <= spc*hpc: break
-    c = lba//(hpc*spc)
-    h = (lba//spc)%hpc
-    s = (lba%spc)+1
-    return c, h, s
+mbr_types = {
+    0x01: 'FAT12 Primary',
+    0x04: 'FAT16 <32MB', # max 65535 sectors
+    0x05: 'Extended CHS',
+    0x06: 'FAT16B Primary',
+    0x07: 'exFAT/NTFS',
+    0x0B: 'FAT32 CHS', # Windows 95 OSR 2.1 (MS-DOS 7.0)
+    0x0C: 'FAT32X LBA', # Windows 95 OSR2 (MS-DOS 7.1+)
+    0x0E: 'FAT16B LBA',
+    0x0F: 'Extended LBA',
+    0xEF: 'EFI System',
+    0xEE: 'GPT Protective MBR'
+}
 
-def size2chs(n, getgeometry=0):
-    lba = n//512
-    
-    # Avoid computations with some well-known IBM PC floppy formats
-    # Look at: https://en.wikipedia.org/wiki/List_of_floppy_disk_formats#Logical_formats
-    if lba == 640:
-        return (80, 1, 8) # 3.5in DS/DD 320KB
-    elif lba == 720:
-        return (80, 1, 9) # 3.5in DS/DD 360KB
-    elif lba == 1280:
-        return (80, 2, 8) # 3.5in DS/DD 640KB
-    elif lba == 1440:
-        return (80, 2, 9) # 3.5in DS/DD 720KB
-    elif lba == 2880:
-        return (80, 2, 18) # 3.5in DS/HD 1440KB
-    elif lba == 3360:
-        return (80, 2, 21) # 3.5in DS/HD 1680KB (MS-DMF)
-    elif lba == 3440:
-        return (82, 2, 21) # 3.5in DS/HD 1720KB
-    elif lba == 5760:
-        return (80, 2, 36) # 3.5in DS/XD 2880KB
-
-    for hpc in (2,16,32,64,128,255):
-        c,h,s = lba2chs(lba,hpc)
-        if c < 1024: break
-    if DEBUG&1: log("size2chs: calculated Heads Per Cylinder: %d", hpc)
-    if not getgeometry:
-        return c,h,s
-    else:
-        # partition that fits in the given space
-        # full number of cylinders, heads per cyl and sectors per track to use
-        return c+1, hpc, 63
-    
-def chs2raw(t):
-    "A partire da una tupla (C,H,S) calcola i 3 byte nell'ordine registrato nel Master Boot Record"
-    c,h,s = t
-    if c > 1023:
-        B1, B2, B3 = 254, 255, 255
-    else:
-        B1, B2, B3 = h, (c&768)>>2|s, c&255
-    #~ print "DEBUG: MBR bytes for LBA %d (%Xh): %02Xh %02Xh %02Xh"%(lba, lba, B1, B2, B3)
-    return b'%c%c%c' % (B1, B2, B3)
-
-def raw2chs(t):
-    "Converte i 24 bit della struttura CHS nel MBR in tupla"
-    h,s,c = t[0], t[1], t[2]
-    return ((s  & 192) << 2) | c, h, s & 63
-
-def mkpart(offset, size, hpc=16):
-    c, h, s = size2chs(size-1, 1)
-    orig_size = size
-    size = 512*c*h*s # adjust size
-    if size > orig_size:
-        c -= 1
-        size = 512*c*h*s # re-adjust size
-    #~ print ("Rounded CHS for %.02f MiB is %d-%d-%d (%.02f MiB)" % (orig_size/(1<<20), c,h,s, size/(1<<20)))
-    dwFirstSectorLBA = offset//512
-    sFirstSectorCHS = lba2chs(dwFirstSectorLBA, hpc)
-    dwTotalSectors = ((size-offset)//512)
-    sLastSectorCHS = lba2chs(dwFirstSectorLBA+dwTotalSectors-1, hpc)
-    return dwFirstSectorLBA, dwTotalSectors, sFirstSectorCHS,sLastSectorCHS
-
+def get_min_mbrtype(size, compatibility=1):
+    """Determines the minimum allowable FAT partition type according to its size.
+    'compatibility' is 0 (old DOS), 1 (default, Win9x) or 2 (NT with 64K clusters available)."""
+    MAX_CL = 32768
+    if compatibility==2: MAX_CL*=2
+    bType = 4 # FAT16 <32MiB (default)
+    if compatibility == 0: bType = 1 # FAT12 (older default; but allowed up t0 127.6MB in theory)
+    if size > (65535*512): bType = 6 # FAT16 >32MiB
+    # Max FAT16 volume extension: clusters heap + 2 FATs + root + boot
+    if size > (65525*MAX_CL+(256<<20)+(16<<20)+512): bType=0xB # FAT32 CHS (MS-DOS 7.0)
+    if size > 1024*255*63*512: bType = 0xC # FAT32 LBA (MS-DOS 7.1+)
+    # Max FAT32 (theoretical) volume extension: ((2**28-11)*65536) + (2*28-11)*4*2 + 9*512 or about 16 TB
+    # But with 32-bit math and 0.5K sectors, no more than 2 TB are addressable
+    if size > (2<<40): bType = 7 # exFAT/NTFS
+    if DEBUG&1: log("calculated partition type %s (%02Xh)", mbr_types[bType], bType)
+    return bType
 
 
 class MBR_Partition(object):
@@ -134,14 +82,16 @@ class MBR_Partition(object):
     0x1CA: ('dwTotalSectors', '<I'), # number of sectors
     # 3 identical 16-byte groups corresponding to the other 3 primary partitions follow
     # DOS uses always 2 of the 4 slots
-    # Modern Windows use LBA addressing
+    # Modern Windows use LBA addressing (filled since DOS 3.30! - 26.04.2023)
+    # PC-DOS 2 (1983) used *last* entry, and filled LBA
     } # Size = 0x10 (16 byte)
 
-    def __init__ (self, s=None, offset=0, index=0):
+    def __init__ (self, s=None, offset=0, index=0, sector=512):
+        self._sector = sector # physical sector size (512 or 4096)
         self.index = index
         self._i = 0
         self._pos = offset # base offset
-        self._buf = s or bytearray(512)
+        self._buf = s or bytearray(sector)
         self._kv = {} # { offset: name}
         for k, v in list(MBR_Partition.layout.items()):
             self._kv[k+index*16] = v
@@ -149,7 +99,7 @@ class MBR_Partition(object):
         for k, v in list(self._kv.items()):
             self._vk[v[0]] = k # partition 0...3
         
-    __getattr__ = utils.common_getattr
+    __getattr__ = common_getattr
 
     def pack(self):
         "Update internal buffer"
@@ -158,10 +108,12 @@ class MBR_Partition(object):
         return self._buf
 
     def __str__ (self):
-        return utils.class2str(self, "DOS %s Partition\n" % ('Primary','Extended','Unused','Unused')[self.index])
+        return class2str(self, "DOS %s Partition\n" % ('Primary','Extended','Unused','Unused')[self.index])
 
     def offset(self):
         "Returns partition offset"
+        if self.dwFirstSectorLBA and self.dwTotalSectors: # safe at least back to DOS 3.30
+            return self.lbaoffset()
         if self.bType in (0x7, 0xC, 0xE, 0xF): # if NTFS or FAT LBA
             return self.lbaoffset()
         else:
@@ -170,15 +122,23 @@ class MBR_Partition(object):
     def chsoffset(self):
         "Returns partition absolute (=disk) byte offset"
         c, h, s = raw2chs(self.sFirstSectorCHS)
-        if DEBUG&1: log("chsoffset: returning %016X", chs2lba(c, h, s, self.heads_per_cyl)*512)
-        return chs2lba(c, h, s, self.heads_per_cyl)*512
+        if DEBUG&1: log("chsoffset: returning %016Xh", chs2lba(c, h, s, self.heads_per_cyl)*self._sector)
+        return chs2lba(c, h, s, self.heads_per_cyl)*self._sector
 
     def lbaoffset(self):
         "Returns partition relative byte offset (from this/extended partition start)"
-        return 512 * self.dwFirstSectorLBA
+        return self.dwFirstSectorLBA*self._sector
     
     def size(self):
-        return 512 * self.dwTotalSectors
+        return self.dwTotalSectors*self._sector
+        
+    def geometry(self):
+        "Returns effective partition Heads and Sectors, if available, or -1"
+        c,h,s = raw2chs(self.sLastSectorCHS)
+        if 0 in (h,s) or h>255 or s>63:
+            if DEBUG&1: log("Invalid CHS data in Partition[%d]", self.index)
+            return -1
+        return h+1, s
 
 
 class MBR(object):
@@ -187,27 +147,31 @@ class MBR(object):
     0x1FE: ('wBootSignature', '<H') # 55 AA
     } # Size = 0x200 (512 byte)
 
-    def __init__ (self, s=None, offset=0, stream=None, disksize=0):
+    def __init__ (self, s=None, offset=0, stream=None, disksize=0, sector=512):
+        self._sector = sector # physical sector size (512 or 4096)
         self._i = 0
         self._pos = offset # base offset
         self._buf = s or bytearray(512) # normal MBR size
         self.stream = stream
-        self.heads_per_cyl = 0 # Heads Per Cylinder (disk based)
+        self.heads_per_cyl = 0 # Heads Per Cylinder (max 255)
+        self.sectors_per_cyl = 0 # Sectors Per Cylinder (max 63)
         self.is_lba = 0
         self._kv = self.layout.copy()
         self._vk = {} # { name: offset}
         self.partitions = []
-        self.heads_per_cyl = size2chs(disksize, True)[1] # detects disk geometry, size based
-        if DEBUG&1: log("Calculated Heads Per Cylinder: %d", self.heads_per_cyl)
         for k, v in list(self._kv.items()):
             self._vk[v[0]] = k
-        for i in range(2): # Part. 2-3 unused in DOS
+        for i in range(4):
             self.partitions += [MBR_Partition(self._buf, index=i)]
-            self.partitions[-1].heads_per_cyl = self.heads_per_cyl
+            # try to detect disk geometry
+            ret = self.partitions[-1].geometry()
+            if ret == -1: continue
+            self.heads_per_cyl = ret[0]
+            self.sectors_per_cyl = ret[1]
     
-    __getattr__ = utils.common_getattr
+    __getattr__ = common_getattr
 
-    def pack(self):
+    def pack(self, sector=512):
         "Update internal buffer"
         self.wBootSignature = 0xAA55 # set valid record signature
         for k, v in list(self._kv.items()):
@@ -215,14 +179,14 @@ class MBR(object):
         for i in self.partitions:
             for k, v in list(i._kv.items()):
                 self._buf[k:k+struct.calcsize(v[1])] = struct.pack(v[1], getattr(i, v[0]))
-        return self._buf
+        return self._buf + bytearray(sector-len(self._buf))
 
     def __str__ (self):
-        s = utils.class2str(self, "Master/Extended Boot Record @%X\n" % self._pos)
+        s = class2str(self, "Master/Extended Boot Record @%X\n" % self._pos)
         s += '\n' + str(self.partitions[0]) 
         s += '\n' + str(self.partitions[1])
         return s
-
+        
     def delpart(self, index):
         "Deletes a partition, explicitly zeroing all fields"
         self.partitions[index].bStatus = 0
@@ -232,92 +196,110 @@ class MBR(object):
         self.partitions[index].dwFirstSectorLBA = 0
         self.partitions[index].dwTotalSectors = 0
     
-    def setpart(self, index, start, size, hpc=16):
+    def setpart(self, index, start, size):
         "Creates a partition, given the start offset and size in bytes"
-        part = MBR_Partition(index=index)
-        dwFirstSectorLBA, dwTotalSectors, sFirstSectorCHS, sLastSectorCHS = mkpart(start, size, self.heads_per_cyl)
-        if DEBUG&1: log("setpart(%d,%d,%d,%d): dwFirstSectorLBA=%08Xh, dwTotalSectors=%08Xh, sFirstSectorCHS=%s, sLastSectorCHS=%s",index, start, size, hpc, dwFirstSectorLBA, dwTotalSectors, sFirstSectorCHS, sLastSectorCHS)
-        part.dwFirstSectorLBA = dwFirstSectorLBA
-        part.dwTotalSectors = dwTotalSectors
-        if sFirstSectorCHS[0] > 1023:
-            part.sFirstSectorCHS = chs2raw((0, 0, 1))
+        pa = self.partitions[index]
+        pa.dwFirstSectorLBA, pa.dwTotalSectors, pa.sFirstSectorCHS, pa.sLastSectorCHS = self.mkpart(start, size)
+        #~ print("setpart(%d,%08Xh,%08Xh,%Xh): dwFirstSectorLBA=%08Xh, dwTotalSectors=%08Xh, sFirstSectorCHS=%s, sLastSectorCHS=%s"%(
+        #~ index, start, size, self.heads_per_cyl, pa.dwFirstSectorLBA, pa.dwTotalSectors, pa.sFirstSectorCHS, pa.sLastSectorCHS))
+        if DEBUG&1: log("setpart(%d,%08Xh,%08Xh,%Xh): dwFirstSectorLBA=%08Xh, dwTotalSectors=%08Xh, sFirstSectorCHS=%s, sLastSectorCHS=%s",
+        index, start, size, self.heads_per_cyl, pa.dwFirstSectorLBA, pa.dwTotalSectors, pa.sFirstSectorCHS, pa.sLastSectorCHS)
+        size = pa.dwTotalSectors*self._sector # final, rounded size
+        if pa.sFirstSectorCHS[0] > 1023:
+            pa.sFirstSectorCHS = chs2raw((0, 0, 1))
         else:
-            part.sFirstSectorCHS = chs2raw(sFirstSectorCHS)
-        if sLastSectorCHS[0] > 1023:
-            part.sLastSectorCHS = chs2raw((1023, 254, 63))
+            pa.sFirstSectorCHS = chs2raw(pa.sFirstSectorCHS)
+        if pa.sLastSectorCHS[0] > 1023:
+            pa.sLastSectorCHS = chs2raw((1023, 254, 63))
         else:
-            part.sLastSectorCHS = chs2raw(sLastSectorCHS)
-        #~ if index==0:
-            #~ part.bStatus = 0x80
-        part.bType = 6 # Primary FAT16 > 32MiB
+            pa.sLastSectorCHS = chs2raw(pa.sLastSectorCHS)
+        #~ if index==0: pa.bStatus = 0x80 # always set as active
+        pa.bType = get_min_mbrtype(size) # effective type must be set after formatting
         if index > 0:
-            if (start+size) < 8<<30:
-                part.bType = 5 # Extended CHS
-            else:
-                part.bType = 15 # Extended LBA
-        if size < 32<<20:
-            part.bType = 4 # FAT16 < 32MiB
-        elif size > 8032<<20:
-            part.bType = 0xC # FAT32 LBA
-        if DEBUG&1: log("setpart: auto set partition type %02X", part.bType)
-        self.partitions[index] = part
+            pa.bType = 5 # Extended CHS
+            if (start+size) > 1024*255*63*self._sector: pa.bType = 15 # Extended LBA
 
+    def mkpart(self, offset, size):
+        partsize=0
+        c=0
+        h=0
+        s=0
+        # First, try to span full cylinders (old DOS)
+        # Heads and Sectors per Cylinder (Track) are useful to FAT format, too
+        if self.heads_per_cyl:
+            h = self.heads_per_cyl
+            s = self.sectors_per_cyl
+            c = size // self._sector // (h*s)
+            if DEBUG&1: log("mkpart: CHS geometry %d-%d-%d (disk based)",c,h,s)
+        if c > 1024 or not self.heads_per_cyl:
+            c, h, s = get_geometry(size)
+            self.heads_per_cyl = h
+            self.sectors_per_cyl = s
+            if DEBUG&1: log("mkpart: CHS geometry %d-%d-%d (calculated)",c,h,s)
+        cyl_size = h*s*self._sector
+        partsize = (offset+c*cyl_size)//cyl_size*cyl_size - offset # partsize after cylinder alignment
+        if DEBUG&1: log("mkpart: using %d heads and %d sectors per Cylinder", h, s)
+        if DEBUG&1: log("mkpart: partition size after cylinder alignment: %d",partsize)
+        if partsize > 1024*255*63*self._sector:
+            # Modern Windows align at MB
+            partsize = size // (1<<20) * (1<<20)
+            if DEBUG&1: log("mkpart: can't use CHS, rounded size to MB align: %08Xh", partsize)
+            h=255;s=63
+        dwFirstSectorLBA = offset//self._sector
+        dwTotalSectors = partsize//self._sector
+        sFirstSectorCHS = lba2chs(dwFirstSectorLBA, h, s)
+        if partsize > 1024*255*63*self._sector:
+            sLastSectorCHS = (1023,254,63)
+        else:
+            sLastSectorCHS = lba2chs(dwFirstSectorLBA+dwTotalSectors-1, h, s)
+        if DEBUG&1: log("mkpart: dwFirstSectorLBA=%08Xh, dwTotalSectors=%08Xh",dwFirstSectorLBA,dwTotalSectors)
+        return dwFirstSectorLBA, dwTotalSectors, sFirstSectorCHS, sLastSectorCHS
 
-mbr_types = {
-0x01: 'FAT12 Primary',
-0x04: 'FAT16 <32MB',
-0x05: 'Extended CHS',
-0x06: 'FAT16 Primary',
-0x0B: 'FAT32 CHS',
-0x0C: 'FAT32 LBA',
-0x0E: 'FAT16 LBA',
-0x0F: 'Extended LBA',
-0xEE: 'GPT'
-}
-
-
-#~ def partition(disk, fmt='gpt', part_name='My Partition', mbr_type=0xC):
-def partition(disk, fmt='gpt', part_name='', mbr_type=0xC):
+def partition(disk, fmt='gpt', options={}):
     "Makes a single partition with all disk space"
     disk.seek(0)
+    SECTOR = options.get('phys_sector', 512)
     if fmt == 'mbr':
-        if DEBUG&1: log("Making a MBR primary partition, type %X: %s", mbr_type, mbr_types[mbr_type])
-        mbr = MBR(None, disksize=disk.size)
-        # Partitions are track-aligned (i.e., 32K-aligned) in old MS-DOS scheme
+        part_size = disk.size
+        if options.get('compatibility',1) == 0 and part_size > (2<<30): part_size = (2<<30)
+        mbr = MBR(None, disksize=disk.size, sector=SECTOR)
+        if disk.type() == 'VHD':
+            c, mbr.heads_per_cyl, mbr.sectors_per_cyl = struct.unpack('>HBB',disk.footer.dwDiskGeometry)
+        elif disk.type() == 'VDI':
+            c, mbr.heads_per_cyl, mbr.sectors_per_cyl = disk.header.dwCylinders, disk.header.dwHeads, disk.header.dwSectors
+        else:
+            c, mbr.heads_per_cyl, mbr.sectors_per_cyl = get_geometry(part_size)
+        # Partitions are Cylinder-aligned in old MS-DOS scheme
         # They are 1 MB-aligned since Windows Vista
         # We can reserve 33 sectors at end, to allow later GPT conversion
-        if mbr_type in (0xC, 0xE):
-            mbr.setpart(0, 1<<20, disk.size - ((1<<20)+33*512))
-        elif mbr_type in (0x4, 0x6, 0xB):
-            # MS-DOS < 7.1 has 2 GB limit
-            if mbr_type < 0xB:
-                size = min(disk.size, 520*128*63*512)
-            else:
-                size = disk.size
-            if DEBUG&1: log("Adjusted part size for MS-DOS pre 7.1: %d", size)
-            mbr.setpart(0, 63*512, size - 63*512)
+        if options.get('lba_mode',0):
+            mbr.setpart(0, 1<<20, part_size-(1<<20)-33*SECTOR)
         else:
-            mbr.setpart(0, 63*512, disk.size - 97*512)
-        mbr.partitions[0].bType = mbr_type # overwrites setpart guess
+            mbr.setpart(0, mbr.sectors_per_cyl*512, part_size-mbr.sectors_per_cyl*SECTOR)
+        if options.get('mbr_type'):
+            mbr.partitions[0].bType = options.get('mbr_type')
+        else:
+            options['mbr_type'] = mbr.partitions[0].bType
+        if DEBUG&1: log("Made a MBR primary partition, type %X: %s", options['mbr_type'], mbr_types[options['mbr_type']])
         # Remove any previous GPT structure
         disk.write(32768*b'\x00')
         disk.seek(0)
-        disk.write(mbr.pack())
+        disk.write(mbr.pack(SECTOR))
         # Blank partition 1st sector (and any old boot sector)
-        disk.seek(mbr.partitions[0].dwFirstSectorLBA*512)
-        disk.write(512*b'\x00')
+        disk.seek(mbr.partitions[0].dwFirstSectorLBA*SECTOR)
+        disk.write(SECTOR*b'\x00')
         # Blank any backup GPT header (and avoid pain to Windows disk changer?)
-        disk.seek(disk.size-512)
-        disk.write(512*b'\x00')
+        disk.seek(part_size-SECTOR)
+        disk.write(SECTOR*b'\x00')
         disk.close()
         return mbr
 
     if DEBUG&1: log("Making a GPT data partition on it\nWriting protective MBR")
-    mbr = MBR(None, disksize=disk.size)
-    mbr.setpart(0, 512, disk.size-512) # create primary partition
+    mbr = MBR(None, disksize=disk.size, sector=SECTOR)
+    mbr.setpart(0, SECTOR, disk.size-SECTOR) # create primary partition
     mbr.partitions[0].bType = 0xEE # Protective GPT MBR
     mbr.partitions[0].dwTotalSectors = 0xFFFFFFFF
-    disk.write(mbr.pack())
+    disk.write(mbr.pack(SECTOR))
     if DEBUG&1: log('%s', mbr)
 
     if DEBUG&1: log("Writing GPT Header and 16K Partition Array")
@@ -326,31 +308,31 @@ def partition(disk, fmt='gpt', part_name='', mbr_type=0xC):
     gpt.dwRevision = 0x10000
     gpt.dwHeaderSize = 92
     gpt.u64MyLBA = 1
-    gpt.u64AlternateLBA = (disk.size-512)//512
+    gpt.u64AlternateLBA = (disk.size-SECTOR)//SECTOR
     gpt.u64FirstUsableLBA = 0x22
     gpt.dwNumberOfPartitionEntries = 0x80
     gpt.dwSizeOfPartitionEntry = 0x80
     # Windows stores a backup copy of the GPT array (16 KiB) before Alternate GPT Header
-    gpt.u64LastUsableLBA = gpt.u64AlternateLBA - (gpt.dwNumberOfPartitionEntries*gpt.dwSizeOfPartitionEntry)//512 - 1
+    gpt.u64LastUsableLBA = gpt.u64AlternateLBA - (gpt.dwNumberOfPartitionEntries*gpt.dwSizeOfPartitionEntry)//SECTOR - 1
     gpt.u64DiskGUID = uuid.uuid4().bytes_le
     gpt.u64PartitionEntryLBA = 2
 
     gpt.parse(ctypes.create_string_buffer(gpt.dwNumberOfPartitionEntries*gpt.dwSizeOfPartitionEntry))
-
+    
     # Windows 11 does not like a start below 1MB nor an end in the last 2MB.
     # 11 even makes a MS reserved part in the first MB!
-    gpt.setpart(0, 0x800, gpt.u64LastUsableLBA-0x1000)
+    gpt.setpart(0, (1<<20)//SECTOR, gpt.u64LastUsableLBA-((1<<20)//SECTOR))
 
-    disk.write(gpt.pack())
-    disk.seek(gpt.u64PartitionEntryLBA*512)
+    disk.write(gpt.pack(SECTOR))
+    disk.seek(gpt.u64PartitionEntryLBA*SECTOR)
     disk.write(gpt.raw_partitions)
 
     # Blank partition 1st sector
-    disk.seek(gpt.partitions[0].u64StartingLBA*512)
-    disk.write(512*b'\x00') # clean old boot sector, if present
+    disk.seek(gpt.partitions[0].u64StartingLBA*SECTOR)
+    disk.write(SECTOR*b'\x00') # clean old boot sector, if present
 
     if DEBUG&1: log("Writing backup of Partition Array and GPT Header at disk end")
-    disk.seek((gpt.u64LastUsableLBA+1)*512)
+    disk.seek((gpt.u64LastUsableLBA+1)*SECTOR)
     disk.write(gpt.raw_partitions) # writes backup
     disk.write(gpt._buf)
     if DEBUG&1: log('%s', gpt)

@@ -8,8 +8,9 @@ def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=No
     par.add_argument('image_file',help="The image file or disk device to write to",metavar="IMAGE_FILE")
     par.add_argument("-s", "--size", dest="image_size", help="specify virtual disk size. K, M, G or T suffixes accepted", metavar="SIZE",required=True)
     par.add_argument("-b", "--base", dest="base_image", help="specify a virtual disk image base to create a differencing image with default parameters", metavar="BASE")
-    par.add_argument("-m", "--monolithic", dest="monolithic", help="immediately allocates all image sectors (except for VMDK)", action="store_true", default=False)
-    par.add_argument("-f", "--force", dest="force", help="overwrites a pre-existing image", action="store_true", default=False)
+    par.add_argument("-m", "--monolithic", dest="monolithic", help="immediately allocate all image sectors (except for VMDK)", action="store_true", default=False)
+    par.add_argument("-f", "--force", dest="force", help="overwrite a pre-existing image", action="store_true", default=False)
+    par.add_argument("--large-sectors", dest="large_sectors", help="emulated physical sector has 4096 bytes (default: 512 bytes) - VHDX only", action="store_true", default=False)
     return par
 
 def call(args):
@@ -61,12 +62,19 @@ def call(args):
     else:
         fmt = vmdkutils
 
+    # Windows 11 does not like a VHDX > 2TB with small sectors. However, it behaves strangely:
+    # at first attempt to mount, it says bad drive; at second, it mounts saying unformatted!
+    # But we used mkfat -p gpt... then it can format from CUI with EXFAT/512 bytes!
+    sector = 512
+    if args.large_sectors: sector = 4096
+    
     if not args.monolithic or fmt == vmdkutils:
-        fmt.mk_dynamic(args.image_file, fssize, overwrite='yes')
+        fmt.mk_dynamic(args.image_file, fssize, overwrite='yes', sector=sector)
     else:
-        fmt.mk_fixed(args.image_file, fssize, overwrite='yes')
+        fmt.mk_fixed(args.image_file, fssize, overwrite='yes', sector=sector)
 
     print("Virtual disk image '%s' created."%args.image_file)
+   
 
 if __name__ == '__main__':
     par=create_parser()
