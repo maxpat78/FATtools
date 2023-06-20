@@ -119,7 +119,7 @@ def get_geometry(size, sector=512):
         s = 63
         h = 255
         c = sectors // (h*s)
-    if DEBUG&1: log("%d cylinders with %d heads and %d sectors (CxHxSx512=%d bytes)",c,h,s,c*h*s*sector)
+    if DEBUG&1: log("%d cylinders with %d heads and %d sectors (CxHxSx%d=%d bytes)",c,h,s,sector,c*h*s*sector)
     return c, h, s
 
 def chs2lba(c, h, s, hpc, spc):

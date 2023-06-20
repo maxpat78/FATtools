@@ -41,7 +41,8 @@ wanted_cluster
 
 cluster size wanted by user, from 2^9 to 2^16 bytes. If sector size is 4096
 bytes, size is up to 2^18 (256K). If not specified, the best value is
-selected automatically.
+selected automatically. Windows 11 seems able to read/write a FAT32 volume
+formatted with a 512K cluster, the maximum size a boot sector can record.
 
 fat_no_64K_cluster
 
@@ -130,7 +131,7 @@ def fat_mkfs(stream, size, sector=512, params={}):
     # Calculate possible combinations for each FAT and cluster size
     for fat_slot_size in fat_slot_sizes:
         allowed = {} # {cluster_size : fsinfo}
-        for i in range(9, max_cluster): # cluster sizes 0.5K...32K (64K)
+        for i in range(9, max_cluster): # cluster sizes 0.5K...32K (64K) or 128K-256K with 4Kn sectors
             fsinfo = {}
             root_entries = params.get('root_entries', {12:224,16:512,32:0}[fat_slot_size])
             root_entries_size = (root_entries*32)+(sector-1)//sector # translate into sectors

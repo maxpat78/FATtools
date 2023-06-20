@@ -162,7 +162,7 @@ class MBR(object):
         for k, v in list(self._kv.items()):
             self._vk[v[0]] = k
         for i in range(4):
-            self.partitions += [MBR_Partition(self._buf, index=i)]
+            self.partitions += [MBR_Partition(self._buf, index=i, sector=sector)]
             # try to detect disk geometry
             ret = self.partitions[-1].geometry()
             if ret == -1: continue
@@ -232,7 +232,7 @@ class MBR(object):
             c = size // self._sector // (h*s)
             if DEBUG&1: log("mkpart: CHS geometry %d-%d-%d (disk based)",c,h,s)
         if c > 1024 or not self.heads_per_cyl:
-            c, h, s = get_geometry(size)
+            c, h, s = get_geometry(size, self._sector)
             self.heads_per_cyl = h
             self.sectors_per_cyl = s
             if DEBUG&1: log("mkpart: CHS geometry %d-%d-%d (calculated)",c,h,s)
@@ -275,7 +275,7 @@ def partition(disk, fmt='gpt', options={}):
         if options.get('lba_mode',0):
             mbr.setpart(0, 1<<20, part_size-(1<<20)-33*SECTOR)
         else:
-            mbr.setpart(0, mbr.sectors_per_cyl*512, part_size-mbr.sectors_per_cyl*SECTOR)
+            mbr.setpart(0, mbr.sectors_per_cyl*SECTOR, part_size-mbr.sectors_per_cyl*SECTOR)
         if options.get('mbr_type'):
             mbr.partitions[0].bType = options.get('mbr_type')
         else:

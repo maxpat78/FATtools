@@ -51,7 +51,7 @@ def vopen(path, mode='rb', what='auto'):
     if what == 'disk':
         return d
     # Tries to access a partition
-    mbr = MBR(d.read(PHYS_SECTOR), disksize=d.size)
+    mbr = MBR(d.read(PHYS_SECTOR), disksize=d.size, sector=PHYS_SECTOR)
     if DEBUG&2: log("Opened MBR: %s", mbr)
     valid_mbr=1
     n = mbr.partitions[0].size()
@@ -114,7 +114,7 @@ def vopen(path, mode='rb', what='auto'):
             extpart = part
             while wanted <=partition:
                 bs = extpart.read(PHYS_SECTOR)
-                ebr = MBR(bs, disksize=d.size) # reads Extended Boot Record
+                ebr = MBR(bs, disksize=d.size, sector=PHYS_SECTOR) # reads Extended Boot Record
                 if DEBUG&2: log("Opened EBR: %s", ebr)
                 if ebr.wBootSignature != 0xAA55:
                     if DEBUG&2: log("Invalid Extended Boot Record")

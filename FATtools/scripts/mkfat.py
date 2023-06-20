@@ -12,10 +12,10 @@ def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=No
     par.add_argument('fs',help="The image file or disk device to write to",metavar="FS")
     par.add_argument("-t", "--fstype", dest="fs_type", help="try to apply the specified File System between FAT12, FAT16, FAT32 or EXFAT. Default: based on medium size.", metavar="FSTYPE")
     par.add_argument("-c", "--cluster", dest="cluster_size", help="force a specified cluster size between 512, 1024, 2048, 4096, 8192, 16384, 32768 (since DOS) or 65536 bytes (Windows NT+; 128K and 256K clusters are allowed with 4K sectors) for FAT. exFAT permits clusters up to 32M. Default: based on medium size. Accepts 'k' and 'm' postfix for Kibibytes and Mebibytes.", metavar="CLUSTER")
-    par.add_argument("-p", "--partition", dest="part_type", help="create a single partition from all disk space before formatting. Accepts MBR, GPT or MBR_OLD (2 GB max, MS-DOS <7.1 compatible)", metavar="PARTTYPE")
+    par.add_argument("-p", "--partition", dest="part_type", help="create a single partition from all disk space before formatting. Accepts MBR (up to 2 TB; 16 TB with 4K sectors), GPT or MBR_OLD (2 GB max, MS-DOS <7.1 compatible)", metavar="PARTTYPE")
     par.add_argument("--fat32compat", action="store_true",  dest="fat32_compat", help="FAT32 is applied in Windows XP compatibility mode, i.e. only if 65525 < clusters < 4177918 (otherwise: 2^28-11 clusters allowed)")
     par.add_argument("--no-fat12", action="store_true",  dest="fat12_disable", help="FAT12 is never applied to small hard disks (~127/254M on DOS/NT systems)")
-    par.add_argument("--no-64k-cluster", action="store_true",  dest="disable_64k", help="do not use 64K clusters (DOS compatibility)")
+    par.add_argument("--no-64k-cluster", action="store_true",  dest="disable_64k", help="cluster size is limited to 32K (DOS compatibility)")
     return par
 
 def call(args):
@@ -26,6 +26,7 @@ def call(args):
 
     SECTOR = 512
     if dsk.type() == 'VHDX' and dsk.metadata.physical_sector_size == 4096: SECTOR = 4096
+    opts={'phys_sector':SECTOR}
 
     # Windows 10 Shell (or START command) happily auto-mounts a VHD ONLY IF partitioned and formatted
     # However, a valid VHD is always mounted and can be handled with Diskpart (GUI/CUI)
@@ -37,14 +38,13 @@ def call(args):
         print("Creating a %s partition with all disk space..."%t.upper())
         if t in ('mbr', 'mbr_old'):
             if dsk.size > (2<<40): 
-                print('You MUST use GPT partition scheme with disks >2TB!')
+                if SECTOR==512: 
+                    print('You MUST use GPT partition scheme with disks >2TB!')
+                    sys.exit(1)
+            opts['lba_mode'] = 1
+            if dsk.size > (16<<40) and SECTOR==4096: 
+                print('You MUST use GPT partition scheme with 4K sectored disks >16TB!')
                 sys.exit(1)
-            #~ if dsk.size > (2<<40) and SECTOR==512: 
-                #~ print('You MUST use GPT partition scheme with disks >2TB!')
-                #~ sys.exit(1)
-            #~ if dsk.size > (16<<40) and SECTOR==4096: 
-                #~ print('You MUST use GPT partition scheme with 4K sectored disks >16TB!')
-                #~ sys.exit(1)
             if t == 'mbr_old':
                 if dsk.size > (2<<30): print('Warning: old DOS does not like primary partitions >2GB, size reduced automatically!')
                 partutils.partition(dsk, 'mbr', {'compatibility':0})
@@ -52,9 +52,9 @@ def call(args):
                     args.fs_type = 'fat16'
                     print('Warning: old DOS does not know FAT32, switching to FAT16.')
             else:
-                partutils.partition(dsk, 'mbr', options={'phys_sector':SECTOR})
+                partutils.partition(dsk, 'mbr', options=opts)
         else:
-            partutils.partition(dsk, 'gpt', options={'phys_sector':SECTOR})
+            partutils.partition(dsk, 'gpt', options=opts)
         dsk.close()
         dsk = vopen(args.fs, 'r+b', 'partition0')
         if type(dsk) == type(''):
@@ -63,7 +63,6 @@ def call(args):
         else:
             print("Disk was correctly partitioned with %s scheme."%t.upper())
             
-
     params = {}
 
     if args.fs_type:
@@ -119,7 +118,7 @@ def call(args):
         else:
             if params['fat_bits'] == 32:
                 dsk.mbr.partitions[0].bType = 0xB
-                if dsk.size > 1024*255*63*512: dsk.mbr.partitions[0].bType = 0xC
+                if dsk.size > 1024*255*63*SECTOR: dsk.mbr.partitions[0].bType = 0xC
             elif params['fat_bits'] == 16:
                 dsk.mbr.partitions[0].bType = 6
                 if dsk.size < (32<<20): dsk.mbr.partitions[0].bType = 4
