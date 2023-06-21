@@ -34,9 +34,6 @@ from FATtools.gptutils import *
 from FATtools.utils import *
 from FATtools.debug import log
 
-import logging
-logging.basicConfig(filename='partutils.log', filemode='w')
-
 mbr_types = {
     0x01: 'FAT12 Primary',
     0x04: 'FAT16 <32MB', # max 65535 sectors
