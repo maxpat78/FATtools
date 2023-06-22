@@ -119,8 +119,8 @@ class MBR_Partition(object):
     def chsoffset(self):
         "Returns partition absolute (=disk) byte offset"
         c, h, s = raw2chs(self.sFirstSectorCHS)
-        if DEBUG&1: log("chsoffset: returning %016Xh", chs2lba(c, h, s, self.heads_per_cyl)*self._sector)
-        return chs2lba(c, h, s, self.heads_per_cyl)*self._sector
+        if DEBUG&1: log("chsoffset: returning %016Xh", chs2lba(c, h, s, self.heads_per_cyl, self.sectors_per_cyl)*self._sector)
+        return chs2lba(c, h, s, self.heads_per_cyl, self.sectors_per_cyl)*self._sector
 
     def lbaoffset(self):
         "Returns partition relative byte offset (from this/extended partition start)"
@@ -135,6 +135,8 @@ class MBR_Partition(object):
         if 0 in (h,s) or h>255 or s>63:
             if DEBUG&1: log("Invalid CHS data in Partition[%d]", self.index)
             return -1
+        self.heads_per_cyl = h+1
+        self.sectors_per_cyl = s
         return h+1, s
 
 
