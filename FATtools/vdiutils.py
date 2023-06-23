@@ -60,10 +60,10 @@ class Header(object):
     0x198: ('sUuidModify', '16s'), # set at every image modification
     0x1A8: ('sUuidLinkage', '16s'), # parent's sUuidCreate
     0x1B8: ('sUuidParentModify', '16s'), # parent's sUuidModify at creation of this snapshot
-    0x1C8: ('dwCylinders', '<I'), # disk geometry (1.1)
+    0x1C8: ('dwCylinders', '<I'), # disk geometry (1.1: actually zero, except dwSectorSize)
     0x1CC: ('dwHeads', '<I'),
     0x1D0: ('dwSectors', '<I'),
-    0x1D4: ('dwSectorSize', '<I')
+    0x1D4: ('dwSectorSize', '<I') # only 512 seems supported
     # REST IS UNUSED
     } # Size = 0x200 (512 byte)
 
@@ -103,7 +103,7 @@ class BAT(object):
         self.offset = offset # relative BAT offset
         self.decoded = {} # {block index: block effective sector}
         self.isvalid = 1 # self test result
-        self._isvalid() # performs self test
+        #~ self._isvalid() # performs self test
 
     def __str__ (self):
         return "BAT table of %d blocks starting @%Xh\n" % (self.size, self.offset)
@@ -151,7 +151,7 @@ class BAT(object):
         raw_size =  self.bsize # RAW block size, including bitmap
         last_block = ssize - raw_size # theoretical offset of last block
         first_block = last_block%raw_size # theoretical address of first block
-        bat_size = max(2<<20, (self.size*4+(1<<20)-1)//(1<<20)*(1<<20))
+        bat_size = utils.roundMB(self.size*4)
         allocated = (ssize-bat_size)//raw_size
         unallocated = 0
         seen = []
@@ -373,14 +373,14 @@ def _mk_common(name, size, block, overwrite):
     h.dwVersion = 0x10001
     h.dwHeaderSize = 0x200
     h.dwBATOffset = (1<<20)
-    h.dwBlocksOffset = max(2<<20, (h.dwTotalBlocks*4+(1<<20)-1)//(1<<20)*(1<<20))
+    h.dwBlocksOffset = h.dwBATOffset + utils.roundMB(h.dwTotalBlocks*4)
     h.u64CurrentSize = size
     h.sUuidCreate = uuid.uuid4().bytes
     h.sUuidModify = uuid.uuid4().bytes
-    h.dwHeads = 255
-    h.dwSectors = 63
+    #~ h.dwHeads = 255
+    #~ h.dwSectors = 63
     h.dwSectorSize = 512
-    h.dwCylinders = (size+8225279)//8225280
+    #~ h.dwCylinders = (size+8225279)//8225280
     return h
 
 
@@ -403,7 +403,7 @@ def mk_fixed(name, size, block=(1<<20), overwrite='no', sector=512):
     run = bytearray().join(L)
     # initializes BAT, MB aligned
     f.write(run)
-    f.write(bytearray((h.dwBlocksOffset-h.dwBATOffset)-bmpsize))
+    f.write(bytearray(h.dwBlocksOffset-bmpsize))
     # quickly allocates all blocks
     f.seek(h.dwTotalBlocks*h.dwBlockSize-1)
     f.write(b'\x00')
@@ -425,7 +425,7 @@ def mk_dynamic(name, size, block=(1<<20), overwrite='no', sector=512):
     # initializes BAT, MB aligned
     bmpsize = h.dwTotalBlocks*4
     f.write(bmpsize*b'\xFF')
-    f.write(bytearray((h.dwBlocksOffset-h.dwBATOffset)-bmpsize))
+    f.write(bytearray(h.dwBlocksOffset-bmpsize))
     f.flush(); f.close()
 
 

@@ -149,3 +149,7 @@ def raw2chs(t):
     "Converts a raw 24-bit CHS address into tuple"
     h,s,c = t[0], t[1], t[2]
     return ((s  & 192) << 2) | c, h, s & 63
+
+def roundMB(n):
+    "Round n at MiB"
+    return  (n+(1<<20)-1) // (1<<20) * (1<<20)
