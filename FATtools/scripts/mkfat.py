@@ -13,6 +13,7 @@ def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=No
     par.add_argument("-t", "--fstype", dest="fs_type", help="try to apply the specified File System between FAT12, FAT16, FAT32 or EXFAT. Default: based on medium size.", metavar="FSTYPE")
     par.add_argument("-c", "--cluster", dest="cluster_size", help="force a specified cluster size between 512, 1024, 2048, 4096, 8192, 16384, 32768 (since DOS) or 65536 bytes (Windows NT+; 128K and 256K clusters are allowed with 4K sectors) for FAT. exFAT permits clusters up to 32M. Default: based on medium size. Accepts 'k' and 'm' postfix for Kibibytes and Mebibytes.", metavar="CLUSTER")
     par.add_argument("-p", "--partition", dest="part_type", help="create a single partition from all disk space before formatting. Accepts MBR (up to 2 TB; 16 TB with 4K sectors), GPT or MBR_OLD (2 GB max, MS-DOS <7.1 compatible)", metavar="PARTTYPE")
+    par.add_argument("--fat-copies", dest="fat_copies", help="set the number of FAT tables (default: 2)", metavar="COPIES")
     par.add_argument("--fat32compat", action="store_true",  dest="fat32_compat", help="FAT32 is applied in Windows XP compatibility mode, i.e. only if 65525 < clusters < 4177918 (otherwise: 2^28-11 clusters allowed)")
     par.add_argument("--no-fat12", action="store_true",  dest="fat12_disable", help="FAT12 is never applied to small hard disks (~127/254M on DOS/NT systems)")
     par.add_argument("--no-64k-cluster", action="store_true",  dest="disable_64k", help="cluster size is limited to 32K (DOS compatibility)")
@@ -105,6 +106,9 @@ def call(args):
         params['fat12_disabled'] = 1
     if args.disable_64k:
         params['fat_no_64K_cluster'] = 1
+
+    if args.fat_copies:
+        params['fat_copies'] = int(args.fat_copies)
 
     params['show_info'] = 1
     ret = format(dsk, dsk.size, SECTOR, params)

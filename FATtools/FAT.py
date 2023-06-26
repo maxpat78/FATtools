@@ -44,7 +44,7 @@ class boot_fat32(object):
     0x34: ('chReserved', '12s'),
     0x40: ('chPhysDriveNumber', 'B'),
     0x41: ('chFlags', 'B'),
-    0x42: ('chExtBootSignature', 'B'),
+    0x42: ('chExtBootSignature', 'B'), # 0x28 or 0x29 (zero if following id, label and FS type absent)
     0x43: ('dwVolumeID', '<I'),
     0x47: ('sVolumeLabel', '11s'),
     0x52: ('sFSType', '8s'),
@@ -161,7 +161,7 @@ class boot_fat16(object):
     0x20: ('dwTotalSectors', '<I'),
     0x24: ('chPhysDriveNumber', 'B'),
     0x25: ('uchCurrentHead', 'B'), # unused
-    0x26: ('uchSignature', 'B'), # 0x28 or 0x29
+    0x26: ('uchSignature', 'B'), # 0x28 or 0x29 (zero if following id, label and FS type absent)
     0x27: ('dwVolumeID', '<I'),
     0x2B: ('sVolumeLabel', '11s'),
     0x36: ('sFSType', '8s'),

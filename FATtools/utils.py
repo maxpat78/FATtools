@@ -73,6 +73,23 @@ def FSguess(boot):
         return 'FAT12'
     return 'FAT16'
 
+def get_media(size):
+    "Returns the media id byte for a given floppy size or 0xF0 if not found"
+    mids = {
+    320: 0xFE, # 5.25" DS/DD 160KB
+    360: 0xFC, # 5.25" DS/DD 180KB
+    640: 0xFA, # 3.5" DS/DD 320KB
+    720: 0xFD, # 3.5" DS/DD 360KB
+    1280: 0xFB, # 3.5" DS/DD 640KB
+    1440: 0xF9, # 3.5" DS/DD 720KB
+    2400: 0xF9, # 5.25" DS/HD 1200KB
+    2880: 0xF0, # 3.5" DS/HD 1440KB
+    3360: 0xF0, # 3.5" DS/HD 1680KB (MS-DMF)
+    3440: 0xF0, # 3.5" DS/HD 1720KB
+    5760: 0xF0 # 3.5" DS/XD 2880KB
+    }
+    return mids.get(size // sector, 0xF0)
+
 def get_geometry(size, sector=512):
     "Returns the CHS geometry that fits a disk size"
     # Heads and Sectors Per track are always needed in a FAT boot sector.

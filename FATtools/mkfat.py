@@ -94,7 +94,8 @@ Return codes:
 -3  bad volume size (160K < size < 2T [16T with 4K sectors])
 -4  no possible format with current parameters (try exFAT?)
 -5  specified FAT type can't be applied
--6  specified cluster can't be applied """
+-6  specified cluster can't be applied
+-7  zero FAT copies """
 
 def fat_mkfs(stream, size, sector=512, params={}):
     "Creates a FAT 12/16/32 File System on stream. Returns 0 for success."
@@ -119,6 +120,7 @@ def fat_mkfs(stream, size, sector=512, params={}):
         return -3
 
     fat_copies = params.get('fat_copies', 2)                # default: best setting
+    if fat_copies < 1: return -7
     reserved_clusters = 11                                  # (0,1, ..F7h-..FFh are always reserved)
     if params.get('fat_ff0_reserved') or sectors < 5761:    # if floppy or requested
         reserved_clusters = 18
@@ -140,16 +142,17 @@ def fat_mkfs(stream, size, sector=512, params={}):
             rreserved_size = reserved_size + root_entries_size # in FAT12/16 this space resides outside the cluster area
             cluster_size = (2**i)
             clusters = (size - rreserved_size) // cluster_size
-            while 1:
-                fat_size = ((fat_slot_size*(clusters+2))//8+sector-1)//sector * sector # FAT sectors according to slot size (12, 16 or 32 bit)
-                required_size = cluster_size*clusters + fat_copies*fat_size + rreserved_size
-                if required_size <= size: break
-                clusters -= 1
-            if clusters > (2**fat_slot_size)-reserved_clusters: continue # increase cluster size
+            if clusters > (2**fat_slot_size)-reserved_clusters: continue # too many clusters, increase size
             if fat_slot_size == 32:
                 if clusters > (2**28)-reserved_clusters: continue # FAT32 uses 28 bits only
                 if params.get('fat32_forbids_low_clusters') and clusters < 65526: continue
                 if params.get('fat32_forbids_high_clusters') and clusters > 4177917: continue
+            while 1:
+                fat_size = ((fat_slot_size*(clusters+2))//8+sector-1)//sector * sector # FAT sectors according to slot size (12, 16 or 32 bit)
+                required_size = cluster_size*clusters + fat_copies*fat_size + rreserved_size
+                if required_size <= size or clusters==0: break
+                clusters -= 1
+            if not clusters: continue
             fsinfo['required_size'] = required_size # space occupied by FS
             fsinfo['reserved_size'] = reserved_size # space reserved before FAT#1
             fsinfo['cluster_size'] = cluster_size
@@ -190,9 +193,8 @@ def fat_mkfs(stream, size, sector=512, params={}):
         allowed = fat_fs[fat_bits]
         K = list(allowed.keys())
         i = len(K) // 2
-        if i < 0: i=0
         fsinfo = allowed[K[i]]
-        if verbose: print("Selected %d bytes cluster." % K[i])
+        if verbose: print("%dK cluster selected." % (int(K[i])/1024.0))
 
     if not params.get('fat_bits') and verbose: print("Selected FAT%d file system."%fat_bits)
     params['fat_bits'] = fat_bits
@@ -215,14 +217,14 @@ def fat_mkfs(stream, size, sector=512, params={}):
     boot.uchFATCopies = fat_copies
     boot.wMaxRootEntries = fsinfo['root_entries'] # fixed root (not used in FAT32)
     if fat_bits == 12 and sectors < 5761:
-        boot.uchMediaDescriptor = 0xF0 # typical floppy (also F9h)
+        boot.uchMediaDescriptor = utils.get_media(size)
         boot.dwHiddenSectors = 0 # assume NOT partitioned
     else:
         boot.uchMediaDescriptor = 0xF8 # HDD
     if sectors < 65536:
-        boot.wTotalSectors = sectors
+        boot.wTotalSectors = fsinfo['required_size']//sector # effective sectors occupied by FAT Volume
     else:
-        boot.dwTotalSectors = sectors
+        boot.dwTotalSectors = fsinfo['required_size']//sector
     if fat_bits != 32:
         boot.wSectorsPerFAT = fsinfo['fat_size']//sector
     else:
@@ -250,13 +252,13 @@ def fat_mkfs(stream, size, sector=512, params={}):
         boot.wFSISector = 1
         boot.wBootCopySector = params.get('fat32_backup_sector', 6)
         
-    boot.pack()
+    buf = boot.pack()
     #~ print(boot)
     #~ print('FAT, root, cluster #2 offsets', hex(boot.fat()), hex(boot.fat(1)), hex(boot.root()), hex(boot.dataoffs))
 
     stream.seek(0)
     # Write boot sector
-    stream.write(boot.pack())
+    stream.write(buf)
     
     if fat_bits == 32:
         fsi = fat32_fsinfo(offset=sector)
@@ -270,7 +272,7 @@ def fat_mkfs(stream, size, sector=512, params={}):
         # Write backup copies of Boot and FSI
         if boot.wBootCopySector:
             stream.seek(boot.wBootCopySector*boot.wBytesPerSector)
-            stream.write(boot.pack())
+            stream.write(buf)
             stream.write(fsi.pack())
 
     # Blank FAT1&2 area
@@ -278,6 +280,13 @@ def fat_mkfs(stream, size, sector=512, params={}):
     blank = bytearray(boot.wBytesPerSector)
     for i in range(boot.wSectorsPerFAT*2):
         stream.write(blank)
+    if 0:
+        to_blank = boot.uchFATCopies * boot.wSectorsPerFAT * boot.wBytesPerSector
+        blank = bytearray(2<<20)
+        while to_blank:
+            n = min(2<<20, to_blank)
+            stream.write(blank[:n])
+            to_blank -= n
     # Initializes FAT1...
     if fat_bits == 12:
         clus_0_2 = b'%c'%boot.uchMediaDescriptor + b'\xFF\xFF' 
@@ -465,15 +474,12 @@ def exfat_mkfs(stream, size, sector=512, params={}):
         fsinfo = {}
         cluster_size = (2**i)
         clusters = (size - reserved_size) // cluster_size
-        # cluster_size increase? FORMAT seems to reserve more space than minimum
+        if clusters > 0xFFFFFFF6: continue
         fat_size = (4*(clusters+2)+sector-1)//sector * sector
-        # round it to cluster_size, or memory page size or something?
-        fat_size = (fat_size+cluster_size-1)//cluster_size * cluster_size
         required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size + dataregion_padding
         while required_size > size:
-            clusters -= 1
+            clusters -= (required_size-size+cluster_size-1)//cluster_size
             fat_size = (4*(clusters+2)+sector-1)//sector * sector
-            fat_size = (fat_size+cluster_size-1)//cluster_size * cluster_size
             required_size = cluster_size*clusters + fat_copies*fat_size + reserved_size + dataregion_padding
         if clusters < 1 or clusters > 0xFFFFFFF6: continue
         fsinfo['required_size'] = required_size # space occupied by FS
@@ -515,8 +521,8 @@ def exfat_mkfs(stream, size, sector=512, params={}):
         boot.u64PartOffset = 0x800
     boot.u64VolumeLength = sectors
     # We can put FAT far away from reserved area, if we want...
-    boot.dwFATOffset = (reserved_size+sector-1)//sector
-    boot.dwFATLength = (fsinfo['fat_size']+sector-1)//sector
+    boot.dwFATOffset = reserved_size//sector
+    boot.dwFATLength = fsinfo['fat_size']//sector
     # Again, we can put clusters heap far away from usual
     boot.dwDataRegionOffset = boot.dwFATOffset + boot.dwFATLength + dataregion_padding
     boot.dwDataRegionLength = fsinfo['clusters']

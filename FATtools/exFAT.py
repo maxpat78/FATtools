@@ -26,7 +26,7 @@ class boot_exfat(object):
     0x03: ('chOemID', '8s'),
     0x0B: ('chDummy', '53s'),
     0x40: ('u64PartOffset', '<Q'),
-    0x48: ('u64VolumeLength', '<Q'), # sectors
+    0x48: ('u64VolumeLength', '<Q'), # length of partition (sectors) where FS is applied (unlike FAT)
     0x50: ('dwFATOffset', '<I'), # sectors
     0x54: ('dwFATLength', '<I'), # sectors
     0x58: ('dwDataRegionOffset', '<I'), # sectors
