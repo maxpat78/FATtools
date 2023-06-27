@@ -229,14 +229,15 @@ def fat_mkfs(stream, size, sector=512, params={}):
         boot.wSectorsPerFAT = fsinfo['fat_size']//sector
     else:
         boot.dwSectorsPerFAT = fsinfo['fat_size']//sector
-    boot.dwVolumeID = FATDirentry.GetDosDateTime(1)
-    boot.sVolumeLabel = b'%-11s' % b'NO NAME'
-    boot.sFSType = b'%-8s' % b'FAT%d' % fat_bits
     boot.chPhysDriveNumber = 0x80
     if fat_bits != 32:
         boot.uchSignature = 0x29
     else:
         boot.chExtBootSignature = 0x29
+    # Next 3 are optional, and set if uchSignature/chExtBootSignature is set
+    boot.dwVolumeID = FATDirentry.GetDosDateTime(1)
+    boot.sVolumeLabel = b'%-11s' % b'NO NAME'
+    boot.sFSType = b'%-8s' % b'FAT%d' % fat_bits
     boot.wBootSignature = 0xAA55
     c,h,s = utils.get_geometry(size)
     if type(stream) == disk.partition:
@@ -261,6 +262,7 @@ def fat_mkfs(stream, size, sector=512, params={}):
     stream.write(buf)
     
     if fat_bits == 32:
+        stream.seek(sector)
         fsi = fat32_fsinfo(offset=sector)
         fsi.sSignature1 = b'RRaA'
         fsi.sSignature2 = b'rrAa'
@@ -273,32 +275,26 @@ def fat_mkfs(stream, size, sector=512, params={}):
         if boot.wBootCopySector:
             stream.seek(boot.wBootCopySector*boot.wBytesPerSector)
             stream.write(buf)
+            stream.seek(boot.wBootCopySector*boot.wBytesPerSector+sector)
             stream.write(fsi.pack())
 
-    # Blank FAT1&2 area
+    # Erase FAT(s) area
     stream.seek(boot.fat())
-    blank = bytearray(boot.wBytesPerSector)
-    for i in range(boot.wSectorsPerFAT*2):
-        stream.write(blank)
-    if 0:
-        to_blank = boot.uchFATCopies * boot.wSectorsPerFAT * boot.wBytesPerSector
-        blank = bytearray(2<<20)
-        while to_blank:
-            n = min(2<<20, to_blank)
-            stream.write(blank[:n])
-            to_blank -= n
-    # Initializes FAT1...
+    to_blank = boot.uchFATCopies * (boot.wSectorsPerFAT | boot.dwSectorsPerFAT) * boot.wBytesPerSector
+    blank = bytearray(2<<20)
+    while to_blank: # 6x faster than sectored technique on large FAT!
+        n = min(2<<20, to_blank)
+        stream.write(blank[:n])
+        to_blank -= n
+    # Initialize FAT(s)
     if fat_bits == 12:
         clus_0_2 = b'%c'%boot.uchMediaDescriptor + b'\xFF\xFF' 
     elif fat_bits == 16:
         clus_0_2 = b'\xF8\xFF\xFF\xFF'
     else:
         clus_0_2 = b'\xF8\xFF\xFF\x0F\xFF\xFF\xFF\xFF\xF8\xFF\xFF\x0F'
-    stream.seek(boot.wReservedSectors*boot.wBytesPerSector)
-    stream.write(clus_0_2)
-    # ...and FAT2
-    if boot.uchFATCopies == 2:
-        stream.seek(boot.fat(1))
+    for i in range(boot.uchFATCopies):
+        stream.seek(boot.fat(i))
         stream.write(clus_0_2)
 
     # Blank root (at fixed offset or cluster #)
@@ -541,11 +537,14 @@ def exfat_mkfs(stream, size, sector=512, params={}):
 
     boot.__init2__()
 
-    # Blank the FAT area
+    # Blank the FAT(s) area
     stream.seek(boot.fatoffs)
-    blank = bytearray(sector)
-    for i in range(boot.dwFATLength):
-        stream.write(blank)
+    to_blank = fat_copies * fsinfo['fat_size']
+    blank = bytearray(2<<20)
+    while to_blank: # 6x faster than sectored technique on large FAT!
+        n = min(2<<20, to_blank)
+        stream.write(blank[:n])
+        to_blank -= n
 
     # Initialize the FAT
     clus_0_2 = b'\xF8\xFF\xFF\xFF\xFF\xFF\xFF\xFF'
@@ -652,5 +651,4 @@ def exfat_mkfs(stream, size, sector=512, params={}):
     free_clusters = boot.dwDataRegionLength - (bitmap.u64DataLength+boot.cluster-1)//boot.cluster - (upcase.u64DataLength+boot.cluster-1)//boot.cluster - 1
     if verbose: print("Successfully applied exFAT to a %.02f %s volume.\n%d clusters of %.1f KB.\n%.02f %s free in %d clusters." % (fsinfo['required_size']/(1<<k), sizes[k], fsinfo['clusters'], fsinfo['cluster_size']/1024, free_clusters*boot.cluster/(1<<k), sizes[k], free_clusters))
     if verbose: print("\nFAT Region @0x%X, Data Region @0x%X, Root (cluster #%d) @0x%X" % (boot.fatoffs, boot.cl2offset(2), boot.dwRootCluster, boot.cl2offset(boot.dwRootCluster)))
-
     return 0
