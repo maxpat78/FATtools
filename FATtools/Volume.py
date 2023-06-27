@@ -79,6 +79,7 @@ def vopen(path, mode='rb', what='auto'):
             d.seek(0)
             return d
         else: # partition mode
+            vclose(d)
             return 'EINVMBR'
     # Tries to open MBR or GPT partition
     if DEBUG&2: log("Ok, valid MBR")
@@ -121,6 +122,7 @@ def vopen(path, mode='rb', what='auto'):
                     if what == 'auto':
                         return d
                     else:
+                        vclose(extpart)
                         return 'EINV'
                 if DEBUG&2: log("Got partition @%016xh (@%016xh rel.) %s", ebr.partitions[0].chsoffset(), ebr.partitions[0].lbaoffset(), utils.raw2chs(ebr.partitions[0].sFirstSectorCHS))
                 if DEBUG&2: log("Next logical partition @%016xh (@%016xh rel.) %s", ebr.partitions[1].chsoffset(), ebr.partitions[1].lbaoffset(), utils.raw2chs(ebr.partitions[1].sFirstSectorCHS))

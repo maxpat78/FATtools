@@ -20,10 +20,15 @@ def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=No
     return par
 
 def call(args):
-    dsk = vopen(args.fs, 'r+b', 'disk')
-    if dsk == 'EINV':
-        print('Invalid disk or image file specified!')
-        sys.exit(1)
+    # Try to open first partition...
+    dsk = vopen(args.fs, 'r+b', 'partition0')
+    # ...if it fails, or it's explicitly required to partition, try to open disk
+    if dsk in ('EINV', 'EINVMBR') or args.part_type:
+        if type(dsk) != str: dsk.close()
+        dsk = vopen(args.fs, 'r+b', 'disk')
+        if dsk == 'EINV':
+            print('Invalid disk or image file specified!')
+            sys.exit(1)
 
     SECTOR = 512
     if dsk.type() == 'VHDX' and dsk.metadata.physical_sector_size == 4096: SECTOR = 4096
@@ -106,7 +111,6 @@ def call(args):
         params['fat12_disabled'] = 1
     if args.disable_64k:
         params['fat_no_64K_cluster'] = 1
-
     if args.fat_copies:
         params['fat_copies'] = int(args.fat_copies)
 
@@ -115,7 +119,9 @@ def call(args):
     if ret != 0:
         print('mkfat failed!')
         sys.exit(1)
-    if ret == 0 and args.part_type.lower()!='gpt':
+    if ret == 0 and dsk.size > (2880<<10) and dsk.type() == 'partition':
+        # don't change if GPT partition
+        if dsk.mbr.partitions[0].bType == 0xEE: return
          # set the right MBR partition type
         if format == exfat_mkfs:
             dsk.mbr.partitions[0].bType = 7
