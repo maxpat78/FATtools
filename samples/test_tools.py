@@ -38,7 +38,7 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
 
     if len(sys.argv)>2 and sys.argv[2]=='mbr':
         print("Creating a MBR partition on disk")
-        gpt = partutils.partition(f, 'mbr', mbr_type=6)
+        gpt = partutils.partition(f, 'mbr')
     else:
         print("Creating a GPT partition on disk")
         gpt = partutils.partition(f)
@@ -51,12 +51,8 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
     log('Opened %s', f)
     if fat_type == 'exfat':
         fmt = mkfat.exfat_mkfs
-    elif fat_type == 'fat32':
-        fmt = mkfat.fat32_mkfs
-    elif fat_type == 'fat16':
-        fmt = mkfat.fat16_mkfs
-    elif fat_type == 'fat12':
-        fmt = mkfat.fat12_mkfs
+    else:
+        fmt = mkfat.fat_mkfs
     if len(sys.argv)>2 and sys.argv[2]=='mbr':
         fmt(f, f.size)
     else:
@@ -110,13 +106,13 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
     opts = Opts()
     opts.threshold=60
     opts.file_size=1<<20
-    opts.programs=63
+    opts.programs=63 # bits mask to select tests to run
     #~ opts.programs=31 # exclude buggy dir cleaning
     opts.debug=7
     opts.sha1=1
-    opts.sha1chk=0
+    opts.sha1chk=0 # set to check generated checksums
     opts.fix=0
-    #~ stress.seed(4)
+    #~ stress.seed(2) # set to repeat a fixed pattern
     if VHD_MODE:
         stress.stress(opts, [img_file[:-4]+'_delta.vhd'])
     else:

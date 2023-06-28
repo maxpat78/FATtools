@@ -280,7 +280,10 @@ def fat_mkfs(stream, size, sector=512, params={}):
 
     # Erase FAT(s) area
     stream.seek(boot.fat())
-    to_blank = boot.uchFATCopies * (boot.wSectorsPerFAT | boot.dwSectorsPerFAT) * boot.wBytesPerSector
+    if fat_bits == 32:
+        to_blank = boot.uchFATCopies * boot.dwSectorsPerFAT * boot.wBytesPerSector
+    else:
+        to_blank = boot.uchFATCopies * boot.wSectorsPerFAT * boot.wBytesPerSector
     blank = bytearray(2<<20)
     while to_blank: # 6x faster than sectored technique on large FAT!
         n = min(2<<20, to_blank)

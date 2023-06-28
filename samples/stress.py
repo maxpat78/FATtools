@@ -95,7 +95,9 @@ class RandFile(object):
 def stress(opts, args):
     "Randomly populates and erases a tree of random files and directories (for test purposes)"
     root = Volume.vopen(args[0], 'r+b') # auto-opens first useful filesystem
-    
+    if type(root) == str:
+        print('Could not vopen "%s", returned %s' % (args[0],root))
+        sys.exit(1)
     dirs_made, files_created, files_erased = 0,0,0
     
     tree = GenRandTree()

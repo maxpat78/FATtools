@@ -1,36 +1,22 @@
 # -*- coding: utf-8 -*-
-
-VMDK_MODE = 0
-
-import os, sys, glob, ctypes, uuid, shutil
-
-import logging
-logging.basicConfig(level=logging.DEBUG, filename='test_vmdk_tools.log', filemode='w')
-
+import os, sys, glob, ctypes, uuid, shutil, logging
 import hexdump
 
+DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
+
+logging.basicConfig(level=logging.DEBUG, filename='test_tools_vhdx.log', filemode='w')
+
 from FATtools.debug import log
-from FATtools import Volume, mkfat, vmdkutils, partutils
+from FATtools import Volume, mkfat, vhdxutils, partutils
 import stress
 
-Volume.exFAT.hexdump = hexdump
 
-def printn(s):
- print(s)
+def printn(s): print(s)
 
-def test(img_file, fssize=64<<20, fat_type='exfat'):
-    VMDK_MODE=0
-    
-    if img_file.lower().endswith('.vmdk'):
-        VMDK_MODE=1
-        log("Creating a blank %.02f MiB Dynamic VMDK disk image", (fssize/(1<<20)))
-        print("Creating a blank %.02f MiB Dynamic VMDK disk image" % (fssize/(1<<20)))
-        vmdkutils.mk_dynamic(img_file, fssize, overwrite='yes')
-    else:
-        if img_file[-1] != ':' and '\\\\.\\' not in img_file:
-            log("Creating a blank %.02f MiB disk image", (fssize/(1<<20)))
-            print("Creating a blank %.02f MiB disk image" % (fssize/(1<<20)))
-            f = open(img_file,'wb'); f.seek(fssize); f.truncate(); f.close()
+def test(img_file, fssize=32<<20, fat_type='exfat'):
+    log("Creating a blank %.02f MiB Dynamic VHDX disk image", (fssize/(1<<20)))
+    print("Creating a blank %.02f MiB Dynamic VHDX disk image" % (fssize/(1<<20)))
+    vhdxutils.mk_dynamic(img_file, fssize, upto=40<<30, overwrite='yes')
 
     f = Volume.vopen(img_file, 'r+b', 'disk')
     if f == 'EINV':
@@ -39,11 +25,11 @@ def test(img_file, fssize=64<<20, fat_type='exfat'):
 
     if len(sys.argv)>2 and sys.argv[2]=='mbr':
         print("Creating a MBR partition on disk")
-        gpt = partutils.partition(f, 'mbr', mbr_type=6)
+        gpt = partutils.partition(f, 'mbr')
     else:
         print("Creating a GPT partition on disk")
         gpt = partutils.partition(f)
-    f.close()
+    f.close() # always close, to avoid tstamp problems!
     
     print("Applying FAT File System on partition:", fat_type)
     log("Applying FAT File System on partition: %s", fat_type)
@@ -83,20 +69,19 @@ def test(img_file, fssize=64<<20, fat_type='exfat'):
     subdir = root.mkdir('T')
     Volume.copy_tree_in('.\T', subdir, printn, 2)
     root.flush()
-    root.fat.stream.close()
+    #~ root.close() # always close, to avoid tstamp problems!
 
-    if VMDK_MODE:
-        print("Creating a blank %.02f MiB Differencing VMDK disk image, linked to previous one" % (fssize/(1<<20)))
-        vmdkutils.mk_diff(img_file[:-5]+'_delta.VMDK', img_file, overwrite='yes')
+    print("Creating a blank %.02f MiB Differencing VHDX disk image, linked to previous one" % (fssize/(1<<20)))
+    vhdxutils.mk_diff(img_file[:-5]+'_delta.vhdx', img_file, overwrite='yes')
 
-        root = Volume.vopen(img_file[:-5]+'_delta.VMDK', 'r+b')
-        root.create('a.txt').write(b'CIAO')
-        root.rmtree('T')
-        root.flush()
+    root = Volume.vopen(img_file[:-5]+'_delta.vhdx', 'r+b')
+    root.create('a.txt').write(b'CIAO')
+    root.rmtree('T')
+    root.flush()
 
-        subdir = root.mkdir('T')
-        Volume.copy_tree_in('.\T', subdir, printn, 2)
-        root.flush()
+    subdir = root.mkdir('T')
+    Volume.copy_tree_in('.\T', subdir, printn, 2)
+    root.flush()
 
     shutil.rmtree('t')
     
@@ -107,22 +92,18 @@ def test(img_file, fssize=64<<20, fat_type='exfat'):
     opts = Opts()
     opts.threshold=60
     opts.file_size=1<<20
-    opts.programs=63
+    opts.programs=63 # bits mask to select tests to run
     #~ opts.programs=31 # exclude buggy dir cleaning
     opts.debug=7
     opts.sha1=1
-    opts.sha1chk=1
+    opts.sha1chk=0 # set to check generated checksums
     opts.fix=0
-    #~ stress.seed(4)
-    if VMDK_MODE:
-        stress.stress(opts, [img_file[:-5]+'_delta.VMDK'])
-    else:
-        stress.stress(opts, [img_file])
+    #~ stress.seed(2) # set to repeat a fixed pattern
+    stress.stress(opts, [img_file[:-5]+'_delta.vhdx'])
 
 
 
 if __name__ == '__main__':
-    #~ fmts = ['fat12', 'fat16', 'fat32', 'exfat']
-    fmts = ['fat32']
+    fmts = ['fat12', 'fat16', 'fat32', 'exfat']
     for fmt in fmts:
         test(sys.argv[1], fat_type=fmt)

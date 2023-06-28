@@ -51,12 +51,8 @@ def test(img_file, fssize=32<<20, fat_type='exfat'):
     log('Opened %s', f)
     if fat_type == 'exfat':
         fmt = mkfat.exfat_mkfs
-    elif fat_type == 'fat32':
-        fmt = mkfat.fat32_mkfs
-    elif fat_type == 'fat16':
-        fmt = mkfat.fat16_mkfs
-    elif fat_type == 'fat12':
-        fmt = mkfat.fat12_mkfs
+    else:
+        fmt = mkfat.fat_mkfs
     if len(sys.argv)>2 and sys.argv[2]=='mbr':
         fmt(f, f.size)
     else:

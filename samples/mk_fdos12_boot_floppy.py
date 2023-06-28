@@ -35,7 +35,7 @@ f = open(sys.argv[1],'wb'); f.seek(floppy_size); f.truncate(); f.close()
 
 # Format & add boot code
 f = Volume.vopen(sys.argv[1], 'r+b', 'disk')
-mkfat.fat12_mkfs(f, floppy_size)
+mkfat.fat_mkfs(f, floppy_size)
 f.seek(0)
 boot = f.read(512)
 bootcode = base64.b64decode(bootable['boot'])

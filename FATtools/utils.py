@@ -1,5 +1,6 @@
 # -*- coding: cp1252 -*-
 import io, struct, os
+from FATtools.debug import log
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
 class myfile(io.FileIO):

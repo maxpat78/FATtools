@@ -95,14 +95,14 @@ class boot_exfat(object):
         return self.cl2offset(self.dwRootCluster)
 
     def checkvbr(self):
+        "Calculates and compares VBR checksum to test VBR integrity"
         if not self.stream: return 0
         sector = 1 << self.uchBytesPerSector
         self.stream.seek(0)
         s = self.stream.read(sector*11)
         calc_crc = self.GetChecksum(s)
-        s = self.stream.read(sector)
+        s = self.stream.read(sector) # checksum sector
         stored_crc = struct.unpack('<I',s[:4])[0]
-        print(calc_crc, stored_crc)
         if calc_crc != stored_crc:
             raise exFATException("FATAL: exFAT Volume Boot Region is corrupted, bad checksum!")
         
@@ -115,7 +115,6 @@ class boot_exfat(object):
             hash = (((hash<<31) | (hash >> 1)) & 0xFFFFFFFF) + s[i] # 10.3.19: when called from test_inject (VBR read into) it is a *string* buffer instead of bytearray: investigate!
             hash &= 0xFFFFFFFF
         return hash
-
 
 
 def upcase_expand(s):
@@ -192,11 +191,20 @@ class Bitmap(Chain):
                 first_free = -1
                 run_length = -1
                 while j < len(s)*8:
-                    if not j%8 and s[j//8] == 0xFF:
-                        if run_length > 0: break
-                        j+=8
-                        continue
-                    if s[j//8] & (1 << (j%8)):
+                    # Most common case should be all-0|1
+                    if not j%8: # if byte start
+                        if not s[j//8]: # if empty byte
+                            if first_free < 0:
+                                first_free = j+2+i*8
+                                run_length = 0
+                            run_length += 8
+                            j+=8
+                            continue
+                        if s[j//8]==0xFF: # if full byte
+                            if run_length > 0: break
+                            j+=8
+                            continue
+                    if s[j//8] & (1 << (j%8)): # test middle bit
                         if run_length > 0: break
                         j+=1
                         continue
