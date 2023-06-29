@@ -187,24 +187,26 @@ class Bitmap(Chain):
             s = self.read(min(PAGE, END_OF_CLUSTERS-i)) # slurp full bitmap, or 1M page
             if DEBUG&8: log("map_free_space: loaded Bitmap page of %d bytes @0x%X", len(s), i)
             j=0
-            while j < len(s)*8:
+            LENGTH = len(s)*8
+            while j < LENGTH:
                 first_free = -1
                 run_length = -1
-                while j < len(s)*8:
+                while j < LENGTH:
                     # Most common case should be all-0|1
-                    if not j%8: # if byte start
-                        if not s[j//8]: # if empty byte
+                    Q = j//8; R = j%8
+                    if not R: # if byte start
+                        if not s[Q]: # if empty byte
                             if first_free < 0:
                                 first_free = j+2+i*8
                                 run_length = 0
                             run_length += 8
                             j+=8
                             continue
-                        if s[j//8]==0xFF: # if full byte
+                        if s[Q]==0xFF: # if full byte
                             if run_length > 0: break
                             j+=8
                             continue
-                    if s[j//8] & (1 << (j%8)): # test middle bit
+                    if s[Q] & (1 << R): # test middle bit
                         if run_length > 0: break
                         j+=1
                         continue
