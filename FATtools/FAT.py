@@ -2,7 +2,7 @@
 # Utilities to manage a FAT12/16/32 file system
 #
 
-import sys, copy, os, struct, time, io, atexit, functools
+import sys, copy, os, struct, time, io, atexit, functools, ctypes
 from datetime import datetime
 from collections import OrderedDict
 from zlib import crc32
@@ -15,8 +15,7 @@ if DEBUG&4: import hexdump
 FS_ENCODING = sys.getfilesystemencoding()
 VFS_ENCODING = 'cp1252' # set here encoding to use in virtual FAT FS
 
-class FATException(Exception):
-	pass
+class FATException(Exception): pass
 
 class boot_fat32(object):
     "FAT32 Boot Sector"
@@ -297,7 +296,8 @@ class FAT(object):
         if DEBUG&4: log("Got FAT1[0x%X]=0x%X @0x%X", index, slot, pos)
         return slot
 
-    # Defer write on FAT#2 allowing undelete?
+    # TFAT (transacted FAT, rare) should write on FAT#2, allowing recovering
+    # from system failures, then update FAT#1
     def __setitem__ (self, index, value):
         "Set the value stored in a given cluster index"
         try:
@@ -413,61 +413,60 @@ class FAT(object):
         startpos = self.stream.tell()
         self.free_clusters_map = {}
         FREE_CLUSTERS=0
-        if self.bits < 32:
-            # FAT16 is max 130K...
-            PAGE = self.offset2 - self.offset - (2*self.bits)//8
+        # FAT16 is max 130K
+        PAGE = self.offset2 - self.offset - (2*self.bits)//8
+        if self.bits == 12:
+            fat_slot = (ctypes.c_ubyte*3)
+        elif self.bits == 16:
+            fat_slot = ctypes.c_short
         else:
             # FAT32 could reach ~1GB!
-            PAGE = 1<<20
+            PAGE = 4<<20
+            fat_slot = ctypes.c_long
         END_OF_CLUSTERS = self.offset + (self.size*self.bits+7)//8 + (2*self.bits)//8
         i = self.offset+(2*self.bits)//8 # address of cluster #2
         self.stream.seek(i)
         while i < END_OF_CLUSTERS:
             s = self.stream.read(min(PAGE, END_OF_CLUSTERS-i)) # slurp full FAT, or 1M page if FAT32
-            if DEBUG&4: log("map_free_space: loaded FAT page of %d bytes @0x%X", len(s), i)
+            s_len = len(s)
+            fat_slots = s_len*8//self.bits
+            if self.bits == 12:
+                pad = s_len - (s_len+2)//3
+                #~ print('dbg:', len(s), pad)
+                fat_table = (fat_slot*((fat_slots+1)//2)).from_buffer(s+pad*b'\x00') # each 24-bit slot holds 2 clusters
+            else:
+                fat_table = (fat_slot*fat_slots).from_buffer(s) # convert buffer into array of (D)WORDs
+            if DEBUG&4: log("map_free_space: loaded FAT page of %d slots @0x%X", fat_slots, i)
             j=0
-            while j < len(s):
+            while j < fat_slots:
                 first_free = -1
                 run_length = -1
-                while j < len(s):
-                    if self.bits == 32:
-                        if s[j] != 0 or s[j+1] != 0 or s[j+2] != 0 or s[j+3] != 0:
-                            j += 4
+                while j < fat_slots:
+                    if self.bits != 12:
+                        if fat_table[j]:
+                            j += 1
                             if run_length > 0: break
                             continue
-                    elif self.bits == 16:
-                        if s[j] != 0 or s[j+1] != 0:
-                            j += 2
+                    else:
+                        # Pick the 12 bits wanted from a 3-bytes group
+                        odd = j%2 # is odd cluster?
+                        ci = j*12//24 # map cluster index to 24-bit index
+                        #~ print('dbg: %d/%d   %d/%d %d' % (j, fat_slots, ci, len(fat_table), odd))
+                        if (not odd and (fat_table[ci][0] or fat_table[ci][1]&0xF0)) or (odd and (fat_table[ci][1]&0xF or fat_table[ci][2])):
+                            j += 1
                             if run_length > 0: break
                             continue
-                    elif self.bits == 12:
-                        # Pick the 12 bits wanted
-                        #     0        1        2
-                        # AAAAAAAA AAAABBBB BBBBBBBB
-                        if not j%3:
-                            if s[j] != 0 or s[j+1]>>4 != 0:
-                                j += 1
-                                if run_length > 0: break
-                                continue
-                        elif j%3 == 1:
-                            j+=1
-                            continue # simply skips median byte
-                        else: # j%3==2
-                            if s[j] != 0 or s[j-1] & 0x0FFF != 0:
-                                j += 1
-                                if run_length > 0: break
-                                continue
                     if first_free < 0:
-                        first_free = (i-self.offset+j)*8//self.bits
+                        first_free = (i-self.offset)*8//self.bits + j
                         if DEBUG&4: log("map_free_space: found run from %d", first_free)
                         run_length = 0
                     run_length += 1
-                    j+=self.bits//8
+                    j+=1
                 if first_free < 0: continue
                 FREE_CLUSTERS+=run_length
                 self.free_clusters_map[first_free] =  run_length
                 if DEBUG&4: log("map_free_space: appended run (%d, %d)", first_free, run_length)
-            i += len(s) # advance to next FAT page to examine
+            i += s_len # advance to next FAT page to examine
         self.stream.seek(startpos)
         self.free_clusters = FREE_CLUSTERS
         if DEBUG&4: log("map_free_space: %d clusters free in %d runs", FREE_CLUSTERS, len(self.free_clusters_map))

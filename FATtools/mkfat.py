@@ -28,14 +28,24 @@ reserved sectors before FAT table. Default: 1 (FAT12/16), 9 (FAT32)
 Windows 10/11 defaults to 8 for FAT12/16, probably to make FAT32 conversion
 easier.
 
+media_byte
+medium type code to put in the boot sector (look at get_format_parameters
+in utils.py)
+
+oem_id
+OEM 8-bytes identifier in FAT boot sector (default: "MSDOS5.0" for FAT12-16,
+"MSWIN4.1" for FAT32)
+
 fat_copies
 
 number of FAT tables (default: 2).
 
 root_entries
 
-number of entries in the fixed root directory (ignored in FAT32).
-Must be a multiple of 16. Default: 224 (FAT12) or 512 (FAT16).
+number of 32 bytes entries in the fixed root directory (ignored in FAT32).
+They must fill exactly one ore more sectors.
+Default: 224 (FAT12) or 512 (FAT16). Appropriate values are used for
+recognized floppy types (i.e. 112 for 712K floppy).
 
 wanted_cluster
 
@@ -87,6 +97,7 @@ fat32_backup_sector
 
 FAT32 Boot and FSI sectors backup copy (default: at sector 6).
 
+
 Return codes:
  0  no errors
 -1  invalid sector size 
@@ -95,7 +106,8 @@ Return codes:
 -4  no possible format with current parameters (try exFAT?)
 -5  specified FAT type can't be applied
 -6  specified cluster can't be applied
--7  zero FAT copies """
+-7  zero FAT copies
+-8  invalid root entries """
 
 def fat_mkfs(stream, size, sector=512, params={}):
     "Creates a FAT 12/16/32 File System on stream. Returns 0 for success."
@@ -128,6 +140,15 @@ def fat_mkfs(stream, size, sector=512, params={}):
     if params.get('fat_no_64K_cluster'): max_cluster = 16
     if sector == 4096: max_cluster = 19
     
+    media_byte = 0xF8 # (HDD)
+    if sectors < 5761: # if floppy
+        media_byte = 0xF0 # generic HD floppy
+        p = utils.get_format_parameters(size)
+        if p:
+            if not params.get('cluster_size'): params['cluster_size'] = p['cluster_size']
+            if not params.get('root_entries'): params['root_entries'] = p['root_entries']
+            media_byte = p['media_byte']
+
     fat_fs = {} # {fat_slot_size : allowed}
     
     # Calculate possible combinations for each FAT and cluster size
@@ -136,6 +157,7 @@ def fat_mkfs(stream, size, sector=512, params={}):
         for i in range(9, max_cluster): # cluster sizes 0.5K...32K (64K) or 128K-256K with 4Kn sectors
             fsinfo = {}
             root_entries = params.get('root_entries', {12:224,16:512,32:0}[fat_slot_size])
+            if (root_entries*32) % sector: return -8
             root_entries_size = (root_entries*32)+(sector-1)//sector # translate into sectors
             reserved_size = params.get('reserved_size', 1)*sector
             if fat_slot_size == 32 and not params.get('reserved_size'): reserved_size = 9*sector
@@ -189,12 +211,24 @@ def fat_mkfs(stream, size, sector=512, params={}):
                 return -6
         fsinfo = fat_fs[fat_bits][wanted_cluster]
     else:
-        # Pick the medium
+        # Pick the medium...
         allowed = fat_fs[fat_bits]
         K = list(allowed.keys())
         i = len(K) // 2
+        # ...except with some well known floppy formats
+        if sectors < 5761:
+            if sectors == 320: i=0 # 512b cluster
+            elif sectors == 360: i=0
+            elif sectors == 640: i=1 # 1K
+            elif sectors == 720: i=1
+            elif sectors == 1440: i=1
+            elif sectors == 2880: i=0
+            elif sectors == 3360: i=2 # 2K
+            elif sectors == 5760: i=0
+            else: i=0 # if unknown, select 512b cluster
         fsinfo = allowed[K[i]]
-        if verbose: print("%dK cluster selected." % (int(K[i])/1024.0))
+            
+        if verbose: print("%.01fK cluster selected." % (int(K[i])/1024.0))
 
     if not params.get('fat_bits') and verbose: print("Selected FAT%d file system."%fat_bits)
     params['fat_bits'] = fat_bits
@@ -216,11 +250,8 @@ def fat_mkfs(stream, size, sector=512, params={}):
     boot.uchSectorsPerCluster = fsinfo['cluster_size']//sector
     boot.uchFATCopies = fat_copies
     boot.wMaxRootEntries = fsinfo['root_entries'] # fixed root (not used in FAT32)
-    if fat_bits == 12 and sectors < 5761:
-        boot.uchMediaDescriptor = utils.get_media(size)
-        boot.dwHiddenSectors = 0 # assume NOT partitioned
-    else:
-        boot.uchMediaDescriptor = 0xF8 # HDD
+    boot.uchMediaDescriptor = media_byte
+    if fat_bits == 12 and sectors < 5761: boot.dwHiddenSectors = 0 # assume NOT partitioned
     if sectors < 65536:
         boot.wTotalSectors = fsinfo['required_size']//sector # effective sectors occupied by FAT Volume
     else:

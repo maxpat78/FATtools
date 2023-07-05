@@ -20,7 +20,9 @@ logical partitions up to 2047 MiB each).
 
 MS-DOS 7.1 (Windows 95 OSR2) detects all 10 GiB and can set up a FAT32-LBA
 primary partition (type 0x0C) with all the space.
-LBA is limited to 2^32 sectors or 2 TiB.
+
+LBA is limited to 2^32 sectors: that is 2 TiB (with 512b sectors) or 16 TiB
+with modern OSes supporting 4 KiB sectors.
 
 If the last LBA sector has no CHS representation, the triple (1023, 254, 63)
 or FE FF FF is used.

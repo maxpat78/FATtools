@@ -74,23 +74,33 @@ def FSguess(boot):
         return 'FAT12'
     return 'FAT16'
 
-def get_media(size):
-    "Returns the media id byte for a given floppy size or 0xF0 if not found"
-    mids = {
-    320: 0xFE, # 5.25" DS/DD 160KB
-    360: 0xFC, # 5.25" DS/DD 180KB
-    640: 0xFA, # 3.5" DS/DD 320KB
-    720: 0xFD, # 3.5" DS/DD 360KB
-    1280: 0xFB, # 3.5" DS/DD 640KB
-    1440: 0xF9, # 3.5" DS/DD 720KB
-    2400: 0xF9, # 5.25" DS/HD 1200KB
-    2880: 0xF0, # 3.5" DS/HD 1440KB
-    3360: 0xF0, # 3.5" DS/HD 1680KB (MS-DMF)
-    3440: 0xF0, # 3.5" DS/HD 1720KB
-    5760: 0xF0 # 3.5" DS/XD 2880KB
+def get_format_parameters(size, id=None, sector=512):
+    "Returns the format parameters for a given floppy size or type"
+    # { id: {total_sectors, media_byte, sector_size, cluster_size, root_entries} }
+    sectors = size//sector
+    params = {
+    "fd160": {"total_sectors":320, "media_byte":0xFE, "cluster_size":512, "root_entries":64}, # 5.25" SS/DD 160KB
+    "fd180": {"total_sectors":360, "media_byte":0xFC, "cluster_size":512, "root_entries":64}, # 5.25" SS/DD 180KB
+    "fd320": {"total_sectors":640, "media_byte":0xFF, "cluster_size":1024, "root_entries":112}, # 5.25" DS/DD 320KB
+    "fd360": {"total_sectors":720, "media_byte":0xFD, "cluster_size":1024, "root_entries":112}, # 3.5" DS/DD 360KB
+   "fd640": {"total_sectors":1280, "media_byte":0xFB, "cluster_size":512, "root_entries":112}, # 3.5" DS/DD 640KB
+   "fd720": {"total_sectors":1440, "media_byte":0xF9, "cluster_size":1024, "root_entries":112}, # 3.5" DS/DD 720KB
+   "fd1200": {"total_sectors":2400,"media_byte":0xF9, "cluster_size":512, "root_entries":224}, # 5.25" DS/HD 1200KB
+   "fd1440": {"total_sectors":2880,"media_byte":0xF0, "cluster_size":512, "root_entries":224}, # 3.5" DS/HD 1440KB
+   "msmdf1": {"total_sectors":3360, "media_byte":0xF0, "cluster_size":1024, "root_entries":16}, # 3.5" DS/HD 1680KB (MS-DMF, 1K cluster)
+   "msmdf2": {"total_sectors":3360, "media_byte":0xF0, "cluster_size":2048, "root_entries":16}, # 3.5" DS/HD 1680KB (MS-DMF, 2K cluster)
+   "fd1722": {"total_sectors":3444,"media_byte":0xF0, "cluster_size":512, "root_entries":224}, # 3.5" DS/HD 1720KB
+   "fd1840": {"total_sectors":3680,"media_byte":0xF0, "cluster_size":512, "root_entries":224}, # 3.5" DS/HD 1840KB (IBM XDF)
+   "fd2880": {"total_sectors":5760,"media_byte":0xF0, "cluster_size":1024, "root_entries":240}, # 3.5" DS/ED 2880KB
     }
-    return mids.get(size // sector, 0xF0)
-
+    ret = None
+    if id:
+        ret = params.get(id)
+        if ret: return ret
+    for k, v in params.items():
+        if v["total_sectors"] == sectors: return v
+    return None
+    
 def get_geometry(size, sector=512):
     "Returns the CHS geometry that fits a disk size"
     # Heads and Sectors Per track are always needed in a FAT boot sector.
@@ -102,19 +112,20 @@ def get_geometry(size, sector=512):
     # Avoid computations with some well-known IBM PC floppy formats and ST HDD
     # Look at: https://en.wikipedia.org/wiki/List_of_floppy_disk_formats#Logical_formats
     geometries = {
-    320: (40, 1, 8), # 5.25" DS/DD 160KB
-    360: (40, 1, 9), # 5.25" DS/DD 180KB
+    320: (40, 1, 8), # 5.25" SS/DD 160KB
+    360: (40, 1, 9), # 5.25" SS/DD 180KB
     #~ 640: (40, 2, 8), # 5.25" DS/DD 320KB
-    640: (80, 1, 8), # 3.5" DS/DD 320KB
+    640: (80, 1, 8), # 3.5" SS/DD 320KB
     #~ 720: (40, 2, 9), # 5.25" DS/DD 360KB
-    720: (80, 1, 9), # 3.5" DS/DD 360KB
+    720: (80, 1, 9), # 5.25" SS/DD 360KB
     1280: (80, 2, 8), # 3.5" DS/DD 640KB
     1440: (80, 2, 9), # 3.5" DS/DD 720KB
     2400: (80, 2, 15), # 5.25" DS/HD 1200KB
     2880: (80, 2, 18), # 3.5" DS/HD 1440KB
     3360: (80, 2, 21), # 3.5" DS/HD 1680KB (MS-DMF)
-    3440: (82, 2, 21), # 3.5" DS/HD 1720KB
-    5760: (80, 2, 36), # 3.5" DS/XD 2880KB
+    3444: (82, 2, 21), # 3.5" DS/HD 1722KB
+    3680: (80, 2, 23), # 3.5" DS/HD 1860KB (IBM XDF)
+    5760: (80, 2, 36), # 3.5" DS/ED 2880KB
     10404: (306, 2, 17), # ST406 5MB 5.25" (HDD)
     41820: (615, 4, 17), # ST225 21MB 5.25"
     83640: (820, 6, 17) # ST251 43MB 5.25"
