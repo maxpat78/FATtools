@@ -49,7 +49,7 @@ def call(args):
     s = args.image_file.lower()
     if not s.endswith('.vhd') and not s.endswith('.vhdx') and not s.endswith('.vdi') and not s.endswith('.vmdk'):
         print("Creating RAW disk image '%s'... "%args.image_file, end='')
-        f=open(args.image_file, 'wb');f.seek(fssize-1);f.write(b' ');f.close()
+        f=open(args.image_file, 'wb');f.seek(fssize-1);f.write(b'\x00');f.close()
         print("OK!")
         sys.exit(0)
 
