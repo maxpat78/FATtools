@@ -6,7 +6,7 @@ from FATtools.utils import is_vdisk
 def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=None):
     par = parser_create_fn(*parser_create_args,description="Create a blank disk device of a given size")
     par.add_argument('image_file',help="The image file or disk device to write to",metavar="IMAGE_FILE")
-    par.add_argument("-s", "--size", dest="image_size", help="specify virtual disk size. K, M, G or T suffixes accepted", metavar="SIZE",required=True)
+    par.add_argument("-s", "--size", dest="image_size", help="specify virtual disk size. K, M, G or T suffixes accepted", metavar="SIZE")
     par.add_argument("-b", "--base", dest="base_image", help="specify a virtual disk image base to create a differencing image with default parameters", metavar="BASE")
     par.add_argument("-m", "--monolithic", dest="monolithic", help="immediately allocate all image sectors (except for VMDK)", action="store_true", default=False)
     par.add_argument("-f", "--force", dest="force", help="overwrite a pre-existing image", action="store_true", default=False)
