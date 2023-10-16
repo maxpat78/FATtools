@@ -8,6 +8,7 @@ Born to re-sort directory entries in a FAT32 root table to cope with some hardwa
 Moreover:
 - it is able to open disk partitioned with both MBR or GPT and to help in partitioning
 - it can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images
+- it can convert disk images between different virtual formats
 - it can handle RAW disk images and BytesIO "RamDisk" images, also.
 - it supports 4K sectors
 - it can handle large clusters (128K, 256K) with FAT formats[2]
@@ -54,6 +55,11 @@ fattools mkfat -t exfat -p gpt image.vhdx
 - to create a differencing VDI disk image:
 ```
 fattools mkvdisk -b image.vdi delta.vdi
+```
+
+- to convert a RAW disk image into a Dynamic VHD (so implicitly virtualizing zeroed data blocks):
+```
+fattools imgclone image.raw image.vhd
 ```
 
 - to list contents in a disk image, copy items to/from it, display and erase them:
