@@ -630,7 +630,6 @@ class FAT(object):
             if self.last <= next <= self.last+7: break
 
 
-
 class Chain(object):
     "Opens a cluster chain or run like a plain file"
     def __init__ (self, boot, fat, cluster, size=0, nofat=0, end=0):
@@ -1392,6 +1391,18 @@ class Dirtable(object):
         free_bytes = self.fat.free_clusters * self.boot.cluster
         return (self.fat.free_clusters, free_bytes)
 
+    def wipefreespace(self):
+        "Zeroes free clusters"
+        buf = (4<<20) * b'\x00'
+        fourmegs = (4<<20)//self.boot.cluster
+        for start, length in self.fat.free_clusters_map.items():
+            if DEBUG&4: log("Wiping %d clusters from cluster #%d", length, start)
+            self.boot.stream.seek(self.boot.cl2offset(start))
+            while length:
+                q = min(length, fourmegs)
+                self.boot.stream.write(buf[:q*self.boot.cluster])
+                length -= q
+        
     def open(self, name):
         "Opens the chain corresponding to an existing file name"
         self._checkopen()

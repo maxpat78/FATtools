@@ -21,7 +21,7 @@ Following features are implemented (mostly in Python, with a few ctypes calls to
 - MBR and GPT partitions handling
 - Long File Name and Unicode support
 - tools to open, create, rename, list and delete files and directories, and to partition disks
-- facilities to sort, clean and shrink directory tables
+- facilities to sort, clean and shrink directory tables and to wipe (zero) free space
 - file fragmentation calculator
 - mkfat tool to properly (partition and) apply a FAT12/16/32 or exFAT filesystem to a block device (file or disk) and let CHKDSK be happy with it (included exFAT compressed Up-Case table generator)
 
@@ -57,10 +57,16 @@ fattools mkfat -t exfat -p gpt image.vhdx
 fattools mkvdisk -b image.vdi delta.vdi
 ```
 
+- to wipe free space in an (ex)FAT formatted disk, zeroing all free clusters:
+```
+fattools wipe image.vhd
+```
+
 - to convert a RAW disk image into a Dynamic VHD (so implicitly virtualizing zeroed data blocks):
 ```
 fattools imgclone image.raw image.vhd
 ```
+Please note that resulting image size can be reduced if the free space in image.raw has been wiped (zeroed) before.
 
 - to list contents in a disk image, copy items to/from it, display and erase them:
 ```

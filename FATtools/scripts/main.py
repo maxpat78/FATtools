@@ -2,7 +2,7 @@ import argparse,importlib,sys
 
 
 def main():
-    scripts=["cat","cp","imgclone","ls","mkfat","mkvdisk","rm","reordergui"]
+    scripts=["cat","cp","imgclone","ls","mkfat","mkvdisk","rm","reordergui","wipe"]
     help_s="Usage: fattools " + ''.join( ['%s|'%s for s in scripts])[:-1]
 
     if len(sys.argv) < 2:

@@ -838,6 +838,18 @@ class Dirtable(object):
         free_bytes = self.boot.bitmap.free_clusters * self.boot.cluster
         return (self.boot.bitmap.free_clusters, free_bytes)
 
+    def wipefreespace(self):
+        "Zeroes free clusters"
+        buf = (4<<20) * b'\x00'
+        fourmegs = (4<<20)//self.boot.cluster
+        for start, length in self.boot.bitmap.free_clusters_map.items():
+            if DEBUG&4: log("Wiping %d clusters from cluster #%d", length, start)
+            self.boot.stream.seek(self.boot.cl2offset(start))
+            while length:
+                q = min(length, fourmegs)
+                self.boot.stream.write(buf[:q*self.boot.cluster])
+                length -= q
+
     def open(self, name):
         "Opens the slot corresponding to an existing file name"
         self._checkopen()

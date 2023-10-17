@@ -33,7 +33,6 @@ def call(args):
 
     if not args.image_size:
         print("mkvdisk error: you must specify a virtual disk image size!")
-        par.print_help()
         sys.exit(1)
 
     u = args.image_size[-1].lower()
