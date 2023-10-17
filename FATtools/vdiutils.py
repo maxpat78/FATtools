@@ -210,6 +210,7 @@ class Image(object):
         if self.header.dwImageType == 4: # Differencing VDI
             parent=''
             for vdi in glob.glob('./*.vdi'):
+                if vdi.lower() == name.lower(): continue
                 parent=vdi
                 o=Image(vdi, "rb")
                 if o.header.sUuidCreate == self.header.sUuidLinkage:

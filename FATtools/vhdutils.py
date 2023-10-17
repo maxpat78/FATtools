@@ -586,8 +586,8 @@ class Image(object):
                 put=size
                 size=0
             if block == 0xFFFFFFFF:
-                # we keep a block virtualized until we write zeros
-                if s[i:i+put] == self.zero[:put]:
+                # we can keep a block virtualized until PARENT'S IS VIRTUALIZED AND we write zeros
+                if self.Parent.bat[self._pos//self.block] == 0xFFFFFFFF and s[i:i+put] == self.zero[:put]:
                     i+=put
                     self._pos+=put
                     if DEBUG&16: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.u64TableOffset)
@@ -632,9 +632,10 @@ class Image(object):
             self.stream.write(s[i:i+put])
             i+=put
             self._pos+=put
-        if DEBUG&16: log("%s: flushing bitmap for block #%d at end", self.name, bmp.i)
-        self.stream.seek(bmp.i*512)
-        self.stream.write(bmp.bmp)
+        if bmp: # None if virtual writes only!
+            if DEBUG&16: log("%s: flushing bitmap for block #%d at end", self.name, bmp.i)
+            self.stream.seek(bmp.i*512)
+            self.stream.write(bmp.bmp)
 
 
 
