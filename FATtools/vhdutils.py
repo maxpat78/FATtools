@@ -30,7 +30,10 @@ by the BAT and 512 MiB by bitmap sectors.
 In fact, Windows 11 refuses to mount a VHD >2040 GiB.
 
 A BAT index of 0xFFFFFFFF signals a zeroed block not allocated physically:
-such value is kept until a block is written with all zeros, too. 
+such value is kept until a block is written with all zeros, too. However,
+since in a Differencing VHD the full chain must be checked, zeroing a block
+already present in an ancestor requires physically allocating and zeroing it
+in the descendant.
 
 PLEASE NOTE THAT ALL NUMBERS ARE IN BIG ENDIAN FORMAT! """
 import io, struct, uuid, zlib, ctypes, time, os, math
@@ -453,7 +456,14 @@ class Image(object):
     
     def close(self):
         self.stream.close()
-        
+    
+    def has_block(self, i):
+        "Returns True if the caller or some ascendant has got allocated a block"
+        if self.bat[i] != 0xFFFFFFFF or \
+        (self.Parent and self.Parent.has_block(i)):
+            return True
+        return False
+
     def read0(self, size=-1):
         "Reads (Fixed image)"
         if size == -1 or self._pos + size > self.size:
@@ -586,8 +596,8 @@ class Image(object):
                 put=size
                 size=0
             if block == 0xFFFFFFFF:
-                # we can keep a block virtualized until PARENT'S IS VIRTUALIZED AND we write zeros
-                if self.Parent.bat[self._pos//self.block] == 0xFFFFFFFF and s[i:i+put] == self.zero[:put]:
+                # we can keep a block virtual until we write zeros and no parent holds it
+                if not self.has_block(self._pos//self.block) and s[i:i+put] == self.zero[:put]:
                     i+=put
                     self._pos+=put
                     if DEBUG&16: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.u64TableOffset)
