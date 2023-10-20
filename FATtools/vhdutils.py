@@ -29,11 +29,10 @@ blocks of default size, the first 3 sectors are occupied by heaeders, 4 MiB
 by the BAT and 512 MiB by bitmap sectors.
 In fact, Windows 11 refuses to mount a VHD >2040 GiB.
 
-A BAT index of 0xFFFFFFFF signals a zeroed block not allocated physically:
-such value is kept until a block is written with all zeros, too. However,
-since in a Differencing VHD the full chain must be checked, zeroing a block
-already present in an ancestor requires physically allocating and zeroing it
-in the descendant.
+A BAT index of 0xFFFFFFFF signals a zeroed block (Dynamic VHD) or a block not
+allocated on a given child (Differencing VHD): in the latter case, zeroing a 
+block alredy present in an ancestor requires allocating a new zeroed block
+in the child image.
 
 PLEASE NOTE THAT ALL NUMBERS ARE IN BIG ENDIAN FORMAT! """
 import io, struct, uuid, zlib, ctypes, time, os, math
@@ -456,6 +455,8 @@ class Image(object):
     
     def close(self):
         self.stream.close()
+        if self.Parent:
+            self.Parent.close()
     
     def has_block(self, i):
         "Returns True if the caller or some ascendant has got allocated a block"
@@ -647,7 +648,43 @@ class Image(object):
             self.stream.seek(bmp.i*512)
             self.stream.write(bmp.bmp)
 
-
+    def merge(self):
+        """Merges a Differencing VHD with its parent and erase the image on success.
+        Returns None if unsupported image, or a tuple (sectors_merged, blocks_merged)."""
+        if not self.Parent: return None
+        i = 0
+        tot_blocks=0
+        tot_sectors=0
+        while i < self.bat.size:
+            # check block presence
+            blkoff = self.bat[i]
+            if blkoff == 0xFFFFFFFF:
+                i += 1
+                continue
+            self.Parent.close()
+            self.Parent = Image(self.Parent.name, "r+b") # reopen Parent in RW mode
+            # load and scan the block bitmap
+            j = 0
+            self.stream.seek(blkoff*512)
+            bmp = BlockBitmap(self.stream.read(self.bitmap_size), i)
+            copied=0
+            while j < self.bitmap_size*8:
+                if bmp.isset(j):
+                    # read the sector
+                    self.stream.seek(blkoff*512 + self.bitmap_size + j*512)
+                    s = self.stream.read(512)
+                    # seek absolute position in parent and copy
+                    self.Parent.seek(i*self.block + j*512)
+                    self.Parent.write(s)
+                    tot_sectors+=1
+                    copied=1
+                j += 1
+            if copied: tot_blocks+=1
+            i += 1
+        if DEBUG&16: log("%s: merged %d sectors in %d blocks",self.name,tot_sectors,tot_blocks)
+        self.close()
+        os.remove(self.name)
+        return (tot_sectors, tot_blocks)
 
 def mk_chs(size):
     "Given a disk size, computates and returns as a string the pseudo CHS for VHD Footer"
