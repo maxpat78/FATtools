@@ -8,10 +8,11 @@ Born to re-sort directory entries in a FAT32 root table to cope with some hardwa
 Moreover:
 - it is able to open disk partitioned with both MBR or GPT and to help in partitioning
 - it can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images
-- it can convert disk images between different virtual formats
+- it can convert disk images between different virtual formats and clone disks
 - it can handle RAW disk images and BytesIO "RamDisk" images, also.
 - it supports 4K sectors
 - it can handle large clusters (128K, 256K) with FAT formats[2]
+- it is able to merge Differencing VHDs
 
 Following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not regularly tested):
 - sector aligned read/writes with both file images and real disks
@@ -36,11 +37,11 @@ The most fragile area (and, thus, subject to bugs) was the caching mechanism, th
 *Actually, the I/O speed is closer to system's one.*
 
 Code is GPLed (look at GPL.TXT).
-
-
+  
+  
 [1] VHDX Log support is actually limited to replaying capability.
+  
 [2] Actually, to say, one can partition with GPT an 8 TB VHDX with 4K sectors and format with FAT32 and happily use it under Windows 11. However, Windows 11 CHKDSK reports no more than 4 TB _bytes_ (while it counts _clusters_ correctly). Also, FORMAT itself can't apply such legitimate FAT32 format to an 8 TB disk.
-
 
 # At a glance
 
@@ -66,7 +67,12 @@ fattools wipe image.vhd
 ```
 fattools imgclone image.raw image.vhd
 ```
-Please note that resulting image size can be reduced if the free space in image.raw has been wiped (zeroed) before.
+Please note that resulting image size can get reduced if: 1) volume(s) is/are defragmented; 2) directory tables are cleaned and shrunk; 3) the free space has been wiped (zeroed) before.
+
+- to capture a physical drive (Windows) to a Dynamic VHD:
+```
+fattools imgclone \\.\PhysicalDrive2 image.vhd
+```
 
 - to list contents in a disk image, copy items to/from it, display and erase them:
 ```

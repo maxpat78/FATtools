@@ -50,7 +50,7 @@ def call(args):
         print("Creating RAW disk image '%s'... "%args.image_file, end='')
         f=open(args.image_file, 'wb');f.seek(fssize-1);f.write(b'\x00');f.close()
         print("OK!")
-        sys.exit(0)
+        return
 
     if s.endswith('.vhd'):
         fmt = vhdutils
