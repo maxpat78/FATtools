@@ -260,7 +260,8 @@ def fat_mkfs(stream, size, sector=512, params={}):
         boot.wSectorsPerFAT = fsinfo['fat_size']//sector
     else:
         boot.dwSectorsPerFAT = fsinfo['fat_size']//sector
-    boot.chPhysDriveNumber = 0x80
+    if media_byte != 0xF0: # if not floppy
+        boot.chPhysDriveNumber = 0x80
     if fat_bits != 32:
         boot.uchSignature = 0x29
     else:

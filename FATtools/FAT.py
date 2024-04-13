@@ -41,7 +41,7 @@ class boot_fat32(object):
     0x30: ('wFSISector', '<H'), # usually 1
     0x32: ('wBootCopySector', '<H'), # 0x0000 or 0xFFFF if unused, usually 6
     0x34: ('chReserved', '12s'),
-    0x40: ('chPhysDriveNumber', 'B'),
+    0x40: ('chPhysDriveNumber', 'B'), # 00h=floppy, 80h=fixed (used by boot code)
     0x41: ('chFlags', 'B'),
     0x42: ('chExtBootSignature', 'B'), # 0x28 or 0x29 (zero if following id, label and FS type absent)
     0x43: ('dwVolumeID', '<I'),
@@ -158,7 +158,7 @@ class boot_fat16(object):
     0x1A: ('wHeads', '<H'),
     0x1C: ('dwHiddenSectors', '<I'),
     0x20: ('dwTotalSectors', '<I'),
-    0x24: ('chPhysDriveNumber', 'B'),
+    0x24: ('chPhysDriveNumber', 'B'), # 00h=floppy, 80h=fixed (used by boot code)
     0x25: ('uchCurrentHead', 'B'), # unused
     0x26: ('uchSignature', 'B'), # 0x28 or 0x29 (zero if following id, label and FS type absent)
     0x27: ('dwVolumeID', '<I'),
