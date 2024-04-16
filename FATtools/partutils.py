@@ -148,6 +148,9 @@ class MBR(object):
     0x1FE: ('wBootSignature', '<H') # 55 AA
     } # Size = 0x200 (512 byte)
 
+    # my universal boot code
+    boot_code =  b'\x31\xC9\xFA\x8E\xD1\xBC\x00\x7C\x8E\xD9\x8E\xC1\xFB\x89\xE3\x89\xDE\xBF\x00\x06\xB9\x00\x01\xFC\xF3\xA5\xEA\x1F\x06\x00\x00\xBE\xBE\x07\x80\x3C\x80\x74\x1C\x83\xC6\x10\x81\xFE\xFE\x07\x7C\xF2\xBE\x86\x06\xAC\x3C\x00\x74\x08\x31\xDB\xB4\x0E\xCD\x10\xEB\xF3\xF4\xEB\xFD\xB4\x42\x87\xFE\xBE\x5C\x06\x8B\x4D\x08\x89\x4C\x08\x8B\x4D\x0A\x89\x4C\x0C\xCD\x13\x87\xFE\x73\x1D\x10\x00\x01\x00\x00\x7C\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xB8\x01\x02\x8B\x4C\x02\x8A\x74\x01\xCD\x13\x72\xB7\x81\x3E\xFE\x07\x55\xAA\x75\xAF\xEA\x00\x7C\x00\x00\x4E\x6F\x74\x68\x69\x6E\x67\x20\x74\x6F\x20\x62\x6F\x6F\x74\x2E\x00'
+
     def __init__ (self, s=None, offset=0, stream=None, disksize=0, sector=512):
         self._sector = sector # physical sector size (512 or 4096)
         self._i = 0
@@ -157,6 +160,7 @@ class MBR(object):
         self.heads_per_cyl = 0 # Heads Per Cylinder (max 255)
         self.sectors_per_cyl = 0 # Sectors Per Cylinder (max 63)
         self.is_lba = 0
+        self.is_bootable = False # determine if add boot code and set bStatus
         self._kv = self.layout.copy()
         self._vk = {} # { name: offset}
         self.partitions = []
@@ -175,6 +179,8 @@ class MBR(object):
     def pack(self, sector=512):
         "Update internal buffer"
         self.wBootSignature = 0xAA55 # set valid record signature
+        if self.is_bootable:
+            self._buf[0:len(self.boot_code)] = self.boot_code
         for k, v in list(self._kv.items()):
             self._buf[k:k+struct.calcsize(v[1])] = struct.pack(v[1], getattr(self, v[0]))
         for i in self.partitions:
@@ -214,7 +220,6 @@ class MBR(object):
             pa.sLastSectorCHS = chs2raw((1023, 254, 63))
         else:
             pa.sLastSectorCHS = chs2raw(pa.sLastSectorCHS)
-        #~ if index==0: pa.bStatus = 0x80 # always set as active
         pa.bType = get_min_mbrtype(size) # effective type must be set after formatting
         if index > 0:
             pa.bType = 5 # Extended CHS
@@ -257,13 +262,14 @@ class MBR(object):
         return dwFirstSectorLBA, dwTotalSectors, sFirstSectorCHS, sLastSectorCHS
 
 def partition(disk, fmt='gpt', options={}):
-    "Makes a single partition with all disk space"
+    "Makes a single partition with all disk space (and makes it bootable if MBR)"
     disk.seek(0)
     SECTOR = options.get('phys_sector', 512)
     if fmt == 'mbr':
         part_size = disk.size
         if options.get('compatibility',1) == 0 and part_size > (2<<30): part_size = (2<<30)
         mbr = MBR(None, disksize=disk.size, sector=SECTOR)
+        mbr.is_bootable = True
         if disk.type() == 'VHD':
             c, mbr.heads_per_cyl, mbr.sectors_per_cyl = struct.unpack('>HBB',disk.footer.dwDiskGeometry)
         elif disk.type() == 'VDI':
@@ -282,6 +288,7 @@ def partition(disk, fmt='gpt', options={}):
         else:
             options['mbr_type'] = mbr.partitions[0].bType
         if DEBUG&1: log("Made a MBR primary partition, type %X: %s", options['mbr_type'], mbr_types[options['mbr_type']])
+        mbr.partitions[0].bStatus = 0x80 # mark as active (required by DOS)
         # Remove any previous GPT structure
         disk.write(32768*b'\x00')
         disk.seek(0)
