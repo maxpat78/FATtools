@@ -6,7 +6,7 @@ Install from PyPI using `pip install FATtools` (easier) or downloading the sourc
 Born to re-sort directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
 
 Moreover:
-- it is able to open disk partitioned with both MBR or GPT and to help in partitioning
+- it is able to open disk partitioned with both MBR or GPT and to help in partitioning (universal MBR boot code included)
 - it can transparently create, read and write Dynamic and Differencing VHD, VHDX[1], VDI and VMDK disk images
 - it can convert disk images between different virtual formats and clone disks
 - it can handle RAW disk images and BytesIO "RamDisk" images, also.
