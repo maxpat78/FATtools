@@ -1,5 +1,5 @@
 # -*- coding: cp1252 -*-
-import io, struct, os
+import io, struct, os, re
 from FATtools.debug import log
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
@@ -182,3 +182,20 @@ def raw2chs(t):
 def roundMB(n):
     "Round n at MiB"
     return  (n+(1<<20)-1) // (1<<20) * (1<<20)
+
+def calc_rel_path(base, child):
+    "returns the path of base relative to child"
+    base_parts = re.split(r'[\\/]+', os.path.abspath(base))
+    child_parts = re.split(r'[\\/]+', os.path.abspath(child))
+    # strips common subpath, if any
+    i=0
+    while base_parts[i] == child_parts[i]: i += 1
+    # returns base if they don't share anything
+    if not i: return base
+    n = len(child_parts) - 1 - i # counts path separators
+    relpath = ''
+    while n:
+        relpath += '..\\'
+        n -= 1
+    relpath += '\\'.join(base_parts[i:])
+    return relpath

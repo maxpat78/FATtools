@@ -40,7 +40,7 @@ import io, struct, uuid, zlib, ctypes, time, os, math
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 import FATtools.utils as utils
 from FATtools.debug import log
-from FATtools.utils import myfile
+from FATtools.utils import myfile, calc_rel_path
 
 
 MAX_VHD_SIZE = 2040<<30 # Windows 11 won't mount bigger VHDs
@@ -828,7 +828,7 @@ def mk_diff(name, base, overwrite='no', sector=512):
     f = myfile(name, 'wb')
     f.write(ima.footer.pack()) # stores footer copy
 
-    rel_base = os.path.relpath(base, os.path.splitdrive(base)[0])
+    rel_base = calc_rel_path(base, name) # gets the path of base image relative to its child
     if rel_base[0] != '.': rel_base = '.\\'+rel_base
     rel_base = rel_base.encode('utf_16_le')
     abs_base = os.path.abspath(base).encode('utf_16_le')
