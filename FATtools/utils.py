@@ -193,7 +193,10 @@ def calc_rel_path(base, child):
     # returns base if they don't share anything
     if not i: return base
     n = len(child_parts) - 1 - i # counts path separators
-    relpath = ''
+    if n:
+        relpath = ''
+    else:
+        relpath = '.\\'
     while n:
         relpath += '..\\'
         n -= 1
