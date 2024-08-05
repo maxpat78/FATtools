@@ -1207,7 +1207,7 @@ def mk_diff(name, base, block=(2<<20), overwrite='no', sector=512):
     pl.entries['parent_linkage'] = '{%s}' % uuid.UUID(bytes_le=parent.header.sDataWriteGuid)
     # Only one of relative_path, volume_path or absolute_win32_path is required
     # Windows 10 completes the other paths on mount and adds parent_linkage2 key
-    pl.entries['relative_path'] = os.path.join('.', os.path.basename(parent.name))
+    pl.entries['relative_path'] = utils.calc_rel_path(parent.name, name)
     pl.wKeyValueCount = len(pl.entries)
     buf = pl.pack()
 
