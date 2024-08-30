@@ -703,7 +703,7 @@ class exFATDirentry(Direntry):
         "Get or set the slot's Label DOS permission"
         return self.type == 3
 
-    special_lfn_chars = '''"*/:<>?\|''' + ''.join([chr(c) for c in range(32)])
+    special_lfn_chars = r'"*/:<>?\|' + ''.join([chr(c) for c in range(32)])
 
     @staticmethod
     def IsValidDosName(name):
@@ -1301,7 +1301,9 @@ class Dirtable(object):
         d = {}
         names = []
         for e in self.iterator():
-            if e.IsLabel(): d[0] = e # if label, assign a special key
+            if e.chEntryType > 0x80 and e.chEntryType < 0x84:
+                d[e.chEntryType] = e # handle special entries
+                continue
             n = e.Name()
             d[n] = e
             names+=[n]
@@ -1311,8 +1313,9 @@ class Dirtable(object):
             names = sorted(names, key=str.lower) # default sorting: alphabetical, case insensitive
         self.stream.seek(0)
         if self.path == '.':
-            self.stream.seek(64) # bypass special entries in root
-            if 0 in d: self.stream.write(d[0]._buf) # write label
+            if 0x83 in d: self.stream.write(d[0x83]._buf) # write Label
+            if 0x81 in d: self.stream.write(d[0x81]._buf) # write Bitmap
+            if 0x82 in d: self.stream.write(d[0x82]._buf) # write Upcase
         for name in names:
             if not name: continue
             self.stream.write(d[name]._buf) # re-writes ordered slots
