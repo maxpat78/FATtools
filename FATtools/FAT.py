@@ -422,7 +422,7 @@ class FAT(object):
         else:
             # FAT32 could reach ~1GB!
             PAGE = 4<<20
-            fat_slot = ctypes.c_long
+            fat_slot = ctypes.c_int
         END_OF_CLUSTERS = self.offset + (self.size*self.bits+7)//8 + (2*self.bits)//8
         i = self.offset+(2*self.bits)//8 # address of cluster #2
         self.stream.seek(i)
