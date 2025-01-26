@@ -8,6 +8,14 @@ DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 if os.name == 'nt':
     from ctypes.wintypes import *
     from FATtools.win32enumvols import dismount_and_lock_all,unlock_volume_handles
+else:
+    # os.stat does not work with Linux block devices, only ioctls!
+    def get_size(name):
+        fd = os.open(name, os.O_RDONLY)
+        try:
+            return os.lseek(fd, 0, os.SEEK_END)
+        finally:
+            os.close(fd)
 
 from FATtools.debug import log
 from FATtools.utils import myfile
@@ -162,7 +170,10 @@ class disk(object):
             self.size = self._file.size
         else:
             self._file = open(name, mode, buffering)
-            self.size = os.stat(name).st_size
+            if os.name == 'nt': 
+                self.size = os.stat(name).st_size
+            else:
+                self.size = get_size(name)
         atexit.register(self.cache_flush)
 
     def close(self):
