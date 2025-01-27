@@ -1,5 +1,5 @@
 # -*- coding: cp1252 -*-
-import io, os, sys, atexit
+import io, os, sys, atexit, platform
 from io import BytesIO
 from ctypes import *
 
@@ -9,13 +9,29 @@ if os.name == 'nt':
     from ctypes.wintypes import *
     from FATtools.win32enumvols import dismount_and_lock_all,unlock_volume_handles
 else:
-    # os.stat does not work with Linux block devices, only ioctls!
-    def get_size(name):
-        fd = os.open(name, os.O_RDONLY)
-        try:
-            return os.lseek(fd, 0, os.SEEK_END)
-        finally:
-            os.close(fd)
+    import fcntl
+    if platform.mac_ver() != ('', ('', '', ''), ''): # macOS X
+        def get_size(name):
+            DKIOCGETBLOCKCOUNT=0x40086419
+            DKIOCGETBLOCKSIZE = 0x40046418
+            count = 0
+            size = 0
+            with open(name) as dev:
+                n = c_ulong(0) # 64-bit
+                fcntl.ioctl(dev.fileno(), DKIOCGETBLOCKCOUNT, n)
+                count = n.value
+                fcntl.ioctl(dev.fileno(), DKIOCGETBLOCKSIZE, n)
+                size = n.value
+            return count*size
+    else: # assume Linux-like
+        # os.stat does not work with Linux block devices
+        # use lseek, ioctl or read 512 blocks # from /sys/block/<device>/size
+        def get_size(name):
+            fd = os.open(name, os.O_RDONLY)
+            try:
+                return os.lseek(fd, 0, os.SEEK_END)
+            finally:
+                os.close(fd)
 
 from FATtools.debug import log
 from FATtools.utils import myfile

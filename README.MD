@@ -1,7 +1,7 @@
 FATtools
 ========
 
-Install from PyPI using `pip install FATtools` (easier) or downloading the source code (or the released packages) from here.
+Install from PyPI using `pip install FATtools` [3] (easier) or downloading the source code (or the released packages) from here.
 
 Born to re-sort directory entries in a FAT32 root table to cope with some hardware MP3 players' limits, it now provides full read/write support in Python 3 (both 32- and 64-bit) for FAT12/16/32 and exFAT filesystems, for hacking and recovering purposes.
 
@@ -14,7 +14,7 @@ Moreover:
 - it can handle large clusters (128K, 256K) with FAT formats[2]
 - it is able to merge Differencing VHDs
 
-Following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux is not regularly tested):
+Following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux and macOS is not regularly tested):
 - sector aligned read/writes with both file images and real disks
 - sector based caching mechanism (for both reading and writing) to speed-up FAT and directory table operations
 - run length encoded map (with tuples and dictionaries) of free clusters, free directory slots, allocated cluster chains
@@ -43,6 +43,10 @@ Code is GPLed (look at GPL.TXT).
   
 [2] Actually, to say, one can partition with GPT an 8 TB VHDX with 4K sectors and format with FAT32 and happily use it under Windows 11. However, Windows 11 CHKDSK reports no more than 4 TB _bytes_ (while it counts _clusters_ correctly). Also, FORMAT itself can't apply such legitimate FAT32 format to an 8 TB disk.
 
+[3] In Linux and macOS a `venv` is the preferred way.
+
+
+
 # At a glance
 
 The package installs a `fattools` script, you can use this to perform simple command line operations.
@@ -69,10 +73,10 @@ fattools imgclone image.raw image.vhd
 ```
 Please note that resulting image size can get reduced if: 1) volume(s) is/are defragmented; 2) directory tables are cleaned and shrunk; 3) the free space has been wiped (zeroed) before.
 
-- to capture a physical drive (Windows) to a Dynamic VHD:
-```
-fattools imgclone \\.\PhysicalDrive2 image.vhd
-```
+- to capture a physical Windows drive (or Linux block device) to a Dynamic VHD:
+`fattools imgclone \\.\PhysicalDrive2 image.vhd` (Windows)
+`fattools imgclone /dev/sdb image.vhd` (Linux)
+`fattools imgclone /dev/disk0s1 image.vhd` (macOS X, disk has first to be dismounted with `diskutil unmount`)
 
 - to list contents in a disk image, copy items to/from it, display and erase them:
 ```
