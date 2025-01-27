@@ -14,7 +14,7 @@ Moreover:
 - it can handle large clusters (128K, 256K) with FAT formats[2]
 - it is able to merge Differencing VHDs
 
-Following features are implemented (mostly in Python, with a few ctypes calls to handle Win32 disks natively; compatibility with Linux and macOS is not regularly tested):
+Following features are implemented (mostly in Python, with a few ctypes calls to handle disks natively; compatibility with Linux and macOS is not regularly tested):
 - sector aligned read/writes with both file images and real disks
 - sector based caching mechanism (for both reading and writing) to speed-up FAT and directory table operations
 - run length encoded map (with tuples and dictionaries) of free clusters, free directory slots, allocated cluster chains
@@ -26,7 +26,8 @@ Following features are implemented (mostly in Python, with a few ctypes calls to
 - file fragmentation calculator
 - mkfat tool to properly (partition and) apply a FAT12/16/32 or exFAT filesystem to a block device (file or disk) and let CHKDSK be happy with it (included exFAT compressed Up-Case table generator)
 
-*Obviously, since a filesystem is an extremely complex and delicate matter, and big bugs may lay around, you'll USE IT TOTALLY AT YOUR OWN RISK!* But it seems quite stable and useable, now.
+*Obviously, since a filesystem is an extremely complex and delicate matter, and big bugs may lay around, you'll USE IT TOTALLY AT YOUR OWN RISK!*   
+But it seems quite stable and useable, now.
 
 The most fragile area (and, thus, subject to bugs) was the caching mechanism, that operates in different ways:
 - intercepting small I/O (<= 512 bytes), which is cached in a small circular buffer. Bigger I/O bypasses the cache; when the cache is full, all dirty sectors are committed to disk and the cache buffer is zeroed. Sectors and buffers are paired with Python builtin dictionaries: this permits a good (from a Pythonic perspective) I/O speed during FAT and directory tables access;
@@ -51,7 +52,7 @@ Code is GPLed (look at GPL.TXT).
 
 The package installs a `fattools` script, you can use this to perform simple command line operations.
 
-**NOTE: administrator (root, superuser) rights are _always_ required to access raw disk devices**
+**NOTE: administrator (root, superuser) rights are _always_ required to access raw disk devices!**
 
 - to create a dynamic 8TB VHDX disk image with a single GPT partition and format it with exFAT:
 ```
@@ -78,10 +79,11 @@ Please note that resulting image size can get reduced if: 1) volume(s) is/are de
 - to capture a physical drive (disk block device) to a Dynamic VHD:   
 `fattools imgclone \\.\PhysicalDrive2 image.vhd` (Windows)   
 `fattools imgclone /dev/sdb image.vhd` (Linux)   
-`fattools imgclone /dev/disk0s1 image.vhd` (macOS X, disk has first to be dismounted with `diskutil unmount`)
+`fattools imgclone /dev/disk0 image.vhd` (macOS X, disk has first to be dismounted with `diskutil unmount`)
 
-- to list contents in a disk image, copy items to/from it, display and erase them:
+- to list contents in a disk or disk image, copy items to/from it, display and erase them:
 ```
+fattools ls \\.\PhysicalDrive2/py*
 fattools ls image1.vhd/py* image2.vdi/py*
 fattools cp C:\Python39\Lib\site-packages image.vhd/Python39/Lib
 fattools cp image.vhd/Python39 C:\ProgramData
