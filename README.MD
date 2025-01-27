@@ -74,8 +74,8 @@ fattools imgclone image.raw image.vhd
 Please note that resulting image size can get reduced if: 1) volume(s) is/are defragmented; 2) directory tables are cleaned and shrunk; 3) the free space has been wiped (zeroed) before.
 
 - to capture a physical Windows drive (or Linux block device) to a Dynamic VHD:
-`fattools imgclone \\.\PhysicalDrive2 image.vhd` (Windows)
-`fattools imgclone /dev/sdb image.vhd` (Linux)
+`fattools imgclone \\.\PhysicalDrive2 image.vhd` (Windows)   
+`fattools imgclone /dev/sdb image.vhd` (Linux)   
 `fattools imgclone /dev/disk0s1 image.vhd` (macOS X, disk has first to be dismounted with `diskutil unmount`)
 
 - to list contents in a disk image, copy items to/from it, display and erase them:
