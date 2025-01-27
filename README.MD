@@ -51,6 +51,8 @@ Code is GPLed (look at GPL.TXT).
 
 The package installs a `fattools` script, you can use this to perform simple command line operations.
 
+* NOTE: administrator (root, superuser) rights are _always_ required to access raw disk devices *
+
 - to create a dynamic 8TB VHDX disk image with a single GPT partition and format it with exFAT:
 ```
 fattools mkvdisk -s 8T --large-sectors image.vhdx
