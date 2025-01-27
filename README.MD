@@ -111,7 +111,7 @@ part = Volume.vopen('MyDiskImage.img', 'r+b', 'partition0')
 mkfat.exfat_mkfs(part, part.size)
 ```
 
-- to order items inside directory tables easily, with GUI and drag support:
+- to order items inside directory tables easily, with GUI and drag support (please note: in Linux, this requires Python `tkinter` module previously installed by `sudo apt-get install python3-tk`):
 ```
 fattools reordergui
 ```
