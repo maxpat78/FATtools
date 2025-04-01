@@ -389,14 +389,14 @@ def copy_out(base, src_list, dest, callback=None, attributes=None, chunk_size=1<
                 if DEBUG&2: log("copy_out: '%s' does not exist", it)
                 if callback: callback('"%s" does not exist!'%it)
                 continue
-            it = os.path.basename(it) # we want only file/dir name in target!
+            it = os.path.join(dest, os.path.basename(it)) # we want only file/dir name in target!
             try:
                 os.mkdir(it)
                 if DEBUG&2: log("copy_out: mkdir '%s'", it)
             except FileExistsError:
                 pass
-            if DEBUG&2: log("copy_out: target is '%s'", os.path.join(dest,it))
-            copy_tree_out(fpi, os.path.join(dest,it), callback, attributes, chunk_size)
+            if DEBUG&2: log("copy_out: target is '%s'", it)
+            copy_tree_out(fpi, it, callback, attributes, chunk_size)
             continue
         it = os.path.basename(it) # we want only file/dir name in target!
         if os.path.isdir(dest):

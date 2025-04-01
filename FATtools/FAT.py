@@ -1717,7 +1717,7 @@ class Dirtable(object):
             s = self.stream.read(32)
             pos += 32
             if not s or s[0] == 0: break
-            if s[0] == 0xE5: continue
+            if s[0] == 0xE5: continue # skip erased
             if s[0x0B] == 0x0F and s[0x0C] == s[0x1A] == s[0x1B] == 0: # LFN
                 buf += s
                 continue
@@ -1899,7 +1899,11 @@ class Dirtable(object):
 
     def listdir(self):
         "Returns a list of file and directory names in this directory, sorted by on disk position"
-        return [o.Name() for o in [o for o in self.iterator()]]
+        it = []
+        for o in self.iterator():
+            if o.IsLabel(): continue
+            it += [o.Name()]
+        return it
 
     def walk(self):
         """Walks across this directory and its childs. For each visited directory,
@@ -1963,7 +1967,7 @@ class Dirtable(object):
         if name == None: return
         e = FATDirentry(bytearray(32))
         e._pos = self.findfree(32) # raises or returns!
-        e._buf[11] = 0x28 # Volume label attribute
+        e._buf[11] = 0x8 # Volume label attribute
         e._buf[:11] = bytes('%-11s' % name.upper(), 'ascii') # Label
         e._buf[22:26] = struct.pack('<I', e.GetDosDateTime(1)) # Creation time (CHKDSK)
         self.stream.seek(e._pos)

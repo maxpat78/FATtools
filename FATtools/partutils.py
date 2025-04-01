@@ -88,6 +88,8 @@ class MBR_Partition(object):
     def __init__ (self, s=None, offset=0, index=0, sector=512):
         self._sector = sector # physical sector size (512 or 4096)
         self.index = index
+        self.heads_per_cyl = 255 # set default values
+        self.sectors_per_cyl = 63
         self._i = 0
         self._pos = offset # base offset
         self._buf = s or bytearray(sector)
@@ -120,7 +122,11 @@ class MBR_Partition(object):
 
     def chsoffset(self):
         "Returns partition absolute (=disk) byte offset"
+        self.geometry()
         c, h, s = raw2chs(self.sFirstSectorCHS)
+        if 0 in (h,s) or h>255 or s>63:
+            if DEBUG&1: log("Invalid CHS data in Partition[%d]", self.index)
+            return -1
         if DEBUG&1: log("chsoffset: returning %016Xh", chs2lba(c, h, s, self.heads_per_cyl, self.sectors_per_cyl)*self._sector)
         return chs2lba(c, h, s, self.heads_per_cyl, self.sectors_per_cyl)*self._sector
 
