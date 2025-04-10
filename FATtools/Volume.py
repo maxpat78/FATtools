@@ -12,7 +12,7 @@ from FATtools import disk, utils, FAT, exFAT
 from FATtools.partutils import MBR, GPT
 from FATtools import utils, vhdutils, vhdxutils, vdiutils, vmdkutils
 from FATtools.debug import log
-
+from .NTFS import ntfs_emu_dirtable
 
 def vopen(path, mode='rb', what='auto'):
     """Opens a disk, partition or volume according to 'what' parameter: 'auto' 
@@ -83,9 +83,9 @@ def vopen(path, mode='rb', what='auto'):
             return 'EINVMBR'
     # Tries to open MBR or GPT partition
     if DEBUG&2: log("Ok, valid MBR")
-    partition=0 # Windows 11 makes a reserved part first
+    partition=0 # Windows 11 makes a MSR reserved part first
     if what.startswith('partition'):
-        partition = int(re.match('partition(\d+)', what).group(1))
+        partition = int(re.match('partition(\\d+)', what).group(1))
     if DEBUG&2: log("Trying to open partition #%d", partition)
     part = None
     if mbr.partitions[0].bType == 0xEE: # GPT
@@ -95,6 +95,11 @@ def vopen(path, mode='rb', what='auto'):
         d.seek(gpt.u64PartitionEntryLBA*PHYS_SECTOR)
         blk = d.read(gpt.dwNumberOfPartitionEntries * gpt.dwNumberOfPartitionEntries)
         gpt.parse(blk)
+        # search for the 1st Windows BDP part
+        partition=-1
+        for part in gpt.partitions:
+            partition+=1
+            if part.sPartitionTypeGUID == b'\xa2\xa0\xd0\xeb\xe5\xb93D\x87\xc0h\xb6\xb7&\x99\xc7': break
         blocks = gpt.partitions[partition].u64EndingLBA - gpt.partitions[partition].u64StartingLBA + 1
         if DEBUG&2: log("Opening Partition #%d: %s", partition, gpt.partitions[partition])
         part = disk.partition(d, gpt.partitions[partition].u64StartingLBA*PHYS_SECTOR, blocks*PHYS_SECTOR)
@@ -195,7 +200,7 @@ def openvolume(part):
     elif fstyp == 'EXFAT':
         boot = exFAT.boot_exfat(bs, stream=part)
     elif fstyp == 'NTFS':
-        return 'EINV'
+        return ntfs_emu_dirtable(part)
     else:
         return 'EINV'
 
@@ -373,8 +378,15 @@ def copy_out(base, src_list, dest, callback=None, attributes=None, chunk_size=1<
     and preserving date and times if desired."""
     for it in src_list:
         # wildcard? expand src_list with matching items in 'base'
+        # AND, eventually, its sub-path
         if '*' in it or '?' in it:
-            if DEBUG&2: log("copy_out: expanding wildcard '%s'", it)
+            subp = os.path.dirname(it)
+            if subp:
+                base = base.opendir(subp)
+                if not base:
+                    raise FileNotFoundError("Source directory '%s' does not exist!"%subp)
+            it = os.path.basename(it)
+            if DEBUG&2: log("copy_out: searching for '%s' in '%s'", it, base.path)
             for name in base.listdir():
                 if fnmatch.fnmatch(name, it):
                     src_list += [name]
