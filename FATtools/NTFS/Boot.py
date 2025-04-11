@@ -35,7 +35,6 @@ class Bootsector:
 		self._vk = {} # { name: offset}
 		for k, v in self._kv.items():
 			self._vk[v[0]] = k
-		print('$Boot', self)
 		
 	__getattr__ = utils.common_getattr
 		
