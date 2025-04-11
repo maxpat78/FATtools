@@ -8,7 +8,6 @@ DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
 class IndexGroup:
 	def __init__ (self, index_root, index_allocation):
-		self.inited = True
 		self.index_root = index_root
 		self.index_allocation = index_allocation
 		
@@ -21,7 +20,7 @@ class IndexGroup:
 			for o in self.index_root.iterator():
 				if DEBUG&8: log("Internal entry", o.FileName)
 				yield o
-		if self.index_allocation:
+		if self.index_allocation and self.index_allocation.valid:
 			for o in self.index_allocation.iterator():
 				if DEBUG&8: log("External entry", o.FileName)
 				yield o
@@ -33,16 +32,14 @@ class IndexGroup:
 		return None
 
 class Index:
-	def __init__ (self, indxstream, bitmap, size, resident=0):
-		#~ print('Index.init called',indxstream, bitmap, size, resident)
-		self.inited = False
-		self.block_size = size
+	def __init__ (self, indxstream, bitmap, block_size, resident=0):
+		#~ print('Index.init called',indxstream, bitmap, block_size, resident)
+		self.valid = False
+		self.block_size = block_size
 		self._stream = indxstream
-		self._bitmap = bitmap # only $INDEX_ALLOCATION has one!
+		self._bitmap = bitmap # in $INDEX_ALLOCATION (bit set if INDX in use)
 		self._pos = self._stream.tell()
 		self._resident = resident
-		# $Bitmap shows free Index clusters
-		# Last free clusters do not require INDX marker
 		self._buf = self._stream.read(self.block_size)
 		if resident:
 			#~ print('DBG: initing resident INDX')
@@ -55,22 +52,22 @@ class Index:
 				#~ print("New INDEX_HEADER:", self._indxh)
 		else:
 			#~ print('DBG: initing non resident INDX')
-			#~ self._stream.seek(0)
-			#~ open('INDX.BIN', 'wb').write(self._stream.read())
+			# Sometimes an $INDEX_ALLOCATION has empty stream: full dir contents deletion?
+			if not self._buf:
+				if DEBUG&8: log("Empty INDX block @%X/%X", self._pos, self._stream.size)
+				#~ print('Empty INDX block', self._pos, self._stream.size, self._stream)
+				return
 			block = Index_Block(self._buf)
 			if not block:
-				if self._bitmap and not self._bitmap.isset(self._pos//self.block_size):
-					if DEBUG&8: log("Cluster INDX %d non used but zeroed", self._pos//self.block_size)
-					#~ print("Cluster INDX %d non used but zeroed"% self._pos//self.block_size)
-				return
+				raise NTFSException('INDX initialization failed')
 			if DEBUG&8: log("decoded INDEX_BLOCK:\n%s", block)
 			#~ print("decoded INDEX_BLOCK:\n%s"% block)
 			self._indxh = Index_Header(self._buf, 24)
 		if DEBUG&8: log("decoded INDEX_HEADER:\n%s", self._indxh)
 		#~ print("decoded INDEX_HEADER:\n%s"% self._indxh)
-		self.inited = True
+		self.valid = True
 
-	def __str__ (self): return "Index (inited=%d) @%x\n%s" % (self.inited, self._pos, self._indxh)
+	def __str__ (self): return "Index @%x\n%s" % (self._pos, self._indxh)
 
 	__getattr__ = utils.common_getattr
 
@@ -83,16 +80,12 @@ class Index:
 
 	def iterator(self):
 		"Iterates through index entries"
-		if not self.inited:
-			#~ print(self._pos)
-			raise NTFSException("Can't scan an INDX block not initialized")
 		while 1:
 			i = self._indxh.dwEntriesOffset
 			while i < self._indxh.dwIndexLength:
 				e = Index_Entry(self._buf, i+self._indxh._i)
 				if e:
-					#~ print('DBG: Index.iterator yielding', e)
-					# An entry with no name signals the INDX block end
+					# An entry with wFlags & 2, or unnamed, signals the INDX block end
 					if e.FileName: yield e
 					if e.wFlags & 0x2:
 						if DEBUG&8: log("last entry in current INDX block")
@@ -105,16 +98,22 @@ class Index:
 				#~ print("DBG: end of resident INDX")
 				break
 			if not self._resident:
+				# Stops at end of Index stream
 				if self._stream.tell() >= self._stream.size:
 					#~ print("DBG: end of non resident INDX stream")
 					break
-				# Loads the next INDX block or stops
+				# Searches for the next used INDX
+				while not self._bitmap.isset(self._stream.tell() // self.block_size):
+					self._stream.seek(self.block_size, 1)
+					if self._stream.tell() >= self._stream.size:
+						return
+				if self._stream.tell() >= self._stream.size:
+					#~ print("DBG: end of non resident INDX stream")
+					break
+				# Loads the next INDX block and continues iteration
 				#~ print('DBG: tell', self._stream.tell())
+				#~ print('DBG: loading next INDX @', self._stream.tell(), self._stream.size)
 				self.__init__(self._stream, self._bitmap, self.block_size, 0)
-				if not self.inited:
-					#~ print('DBG: could not init next non-resident INDX block, stop scanning')
-					return
-				#~ print('New INDX block inited')
 
 class Index_Block:
 	layout = {
@@ -131,7 +130,9 @@ class Index_Block:
 		self._vk = {} # { nome: offset}
 		for k, v in self._kv.items():
 			self._vk[v[0]] = k
-		if self.sMagic != b'INDX': raise BadIndex
+		# Unused blocks can be zeroed (=no INDX marker)
+		if self.sMagic != b'INDX':
+			raise BadIndex
 		self.fixup()
 
 	__getattr__ = utils.common_getattr

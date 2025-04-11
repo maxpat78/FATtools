@@ -28,7 +28,6 @@ class Record:
 	def __init__ (self, boot, mftstream):
 		#~ mftrecord.boot.stream --> NTFS Volume stream
 		#~ mftrecord._stream --> $MFT stream
-		self.no_expand = False
 		self.boot = boot
 		record_size = boot.record()
 		self._i = 0 # buffer offset
@@ -58,7 +57,7 @@ class Record:
 			if dwType == 0xFFFFFFFF: break
 			elif dwType == 0x10:
 				a = Standard_Information(self, offset)
-			elif dwType == 0x20 and not self.no_expand:
+			elif dwType == 0x20:
 				a = Attribute_List(self, offset)
 				self._expand_attribute_list(a)
 			elif dwType == 0x30:
