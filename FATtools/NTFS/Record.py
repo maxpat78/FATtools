@@ -62,6 +62,10 @@ class Record:
 				self._expand_attribute_list(a)
 			elif dwType == 0x30:
 				a = File_Name(self, offset)
+			elif dwType == 0x60:
+				a = Volume_Name(self, offset)
+			elif dwType == 0x70:
+				a = Volume_Information(self, offset)
 			elif dwType == 0x80:
 				a = Data(self, offset)
 			elif dwType == 0x90:

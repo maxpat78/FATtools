@@ -8,7 +8,7 @@ from FATtools.debug import log
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
 __all__ = ['Attribute', 'Standard_Information', 'Attribute_List', 'Attribute_Listed', 'File_Name', 'Data',
-'Index_Root', 'Index_Allocation', 'Bitmap', 'attributes_by_id', 'attributes_by_name']
+'Index_Root', 'Index_Allocation', 'Bitmap', 'Volume_Name', 'Volume_Information', 'attributes_by_id', 'attributes_by_name']
 
 
 attributes_by_id ={
@@ -289,3 +289,32 @@ class Bitmap(Attribute):
 		self.file.seek(byte)
 		b = self.file.read(1)
 		return ord(b) & (1 << bit) != 0
+
+class Volume_Name(Attribute):
+	# Always resident
+	specific_layout = {}
+
+	def __init__(self, parent, offset):
+		Attribute.__init__(self, parent, offset)
+		common_update_and_swap(self)
+		i = self._i + self.wAttrOffset
+		self.VolumeName = (b'\xFF\xFE' + self._buf[i:i+self.dwLength]).decode('utf16')
+
+	def __str__ (self):
+		L1 = utils.class2str(self, "$VOLUME_NAME @%x\n" % self._i).split('\n')
+		return '\n'.join(L1) + '%x: VolumeName = %s\n' % (self.wAttrOffset, self.VolumeName)
+
+class Volume_Information(Attribute):
+	# Always resident
+	specific_layout = {
+	0x00: ('u64Reserved', '<Q'),
+	0x08: ('bMajorVersion', 'B'), # 3.1=XP+, 3.0=2K, 1.2=NT
+	0x09: ('bMinorVersion', 'B'),
+	0x0A: ('wFlags', '<H'), # 1=dirty, 2=log resize, 4=to upgrade, 8=mounted on NT4, 10h=del USN, 20h=repair OIDS, 8000h=modified by CHKDSK
+	0x0C: ('dwReserved', '<I') } # 0x10 (16) bytes
+
+	def __init__(self, parent, offset):
+		Attribute.__init__(self, parent, offset)
+		common_update_and_swap(self)
+
+	def __str__ (self): return utils.class2str(self, "$VOLUME_INFORMATION @%x\n" % self._i)

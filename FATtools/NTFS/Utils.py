@@ -150,6 +150,8 @@ class Dirtable:
 	def getdiskspace(p):
 		"Returns the disk free space in a tuple (clusters, bytes)"
 		return (0, 0)
+		#~ freec = ntfs_get_free_clusters(p.mft)
+		#~ return (freec, freec*p.mft.boot.cluster())
 
 
 
@@ -166,7 +168,7 @@ def ntfs_open_volume(stream):
 	"Opens an NTFS volume returning its MFT Record object"
 	stream.seek(0)
 	boot = Bootsector(stream)
-	assert boot.chOemID == b'NTFS'
+	assert boot.chOemID == b'NTFS    '
 	assert boot.wSecMark == 0xaa55
 	stream.seek(boot.mft())
 	mft = Record(boot, stream)
@@ -175,6 +177,27 @@ def ntfs_open_volume(stream):
 	else:
 		raise NTFSException("The NTFS Master File Table $MFT was not found!")
 	return mft
+
+# Terribly slow! Avoid using!
+def ntfs_get_free_clusters(mft):
+	"Computates free clusters given the MFT Record"
+	bmp = ntfs_open_record(mft, "$Bitmap") # NTFS volume bitmap
+	f = bmp.find_attribute("$DATA")[-1].file
+	totc = mft.boot.u64TotalSectors // mft.boot.uchSecPerClust # volume clusters
+	#~ print('DBG: total clusters', totc)
+	#~ print('DBG: $Bitmap size', f.size)
+	freec = 0
+	while totc > 0:
+		B = f.read(1) # process 8 clusters at once
+		totc -= 8
+		if B == b'\x00':
+			freec += 8
+			continue
+		if B == b'\xFF':
+			continue
+		for i in range(8):
+			if not ((B[0] & (1 << i)) != 0): freec += 1
+	return freec
 
 def ntfs_open_dir(rcrd):
 	"Opens a directory record returning its associated Index"
