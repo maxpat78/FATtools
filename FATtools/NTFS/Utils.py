@@ -149,9 +149,9 @@ class Dirtable:
 
 	def getdiskspace(p):
 		"Returns the disk free space in a tuple (clusters, bytes)"
-		return (0, 0)
-		#~ freec = ntfs_get_free_clusters(p.mft)
-		#~ return (freec, freec*p.mft.boot.cluster())
+		#~ return (0, 0)
+		freec = ntfs_get_free_clusters(p.mft)
+		return (freec, freec*p.mft.boot.cbCluster)
 
 
 
@@ -170,7 +170,7 @@ def ntfs_open_volume(stream):
 	boot = Bootsector(stream)
 	assert boot.chOemID == b'NTFS    '
 	assert boot.wSecMark == 0xaa55
-	stream.seek(boot.mft())
+	stream.seek(boot.LcnMFT)
 	mft = Record(boot, stream)
 	if mft.find_attribute("$FILE_NAME")[0].FileName == '$MFT':
 		mft = Record(boot, mft.find_attribute(0x80)[0].file)
@@ -178,38 +178,36 @@ def ntfs_open_volume(stream):
 		raise NTFSException("The NTFS Master File Table $MFT was not found!")
 	return mft
 
-# Terribly slow! Avoid using!
 def ntfs_get_free_clusters(mft):
-	"Computates free clusters given the MFT Record"
+	# Precalcola il numero di zero per ogni byte
+	bit_zero_table = [8 - bin(i).count('1') for i in range(256)]
 	bmp = ntfs_open_record(mft, "$Bitmap") # NTFS volume bitmap
 	f = bmp.find_attribute("$DATA")[-1].file
 	totc = mft.boot.u64TotalSectors // mft.boot.uchSecPerClust # volume clusters
-	#~ print('DBG: total clusters', totc)
-	#~ print('DBG: $Bitmap size', f.size)
 	freec = 0
+	excb = 8 - totc%8 # excedent bits
 	while totc > 0:
-		B = f.read(1) # process 8 clusters at once
-		totc -= 8
-		if B == b'\x00':
-			freec += 8
-			continue
-		if B == b'\xFF':
-			continue
-		for i in range(8):
-			if not ((B[0] & (1 << i)) != 0): freec += 1
+		cb = min(totc//8 or 1, 1<<20) # process min 1b, max 1MB bitmap
+		totc -= cb*8
+		buf = f.read(cb) 
+		zeros = sum(bit_zero_table[b] for b in buf)
+		freec += zeros
+		if totc < 0:
+			# excedent bits are 1 already?
+			pass
 	return freec
 
 def ntfs_open_dir(rcrd):
 	"Opens a directory record returning its associated Index"
 	# Entries can be both resident and not resident
 	ir = rcrd.find_attribute("$INDEX_ROOT")[0]
-	ixr = Index(ir.file, None, rcrd.boot.index(), 1)
+	ixr = Index(ir.file, None, rcrd.boot.cbIndx, 1)
 	ia = rcrd.find_attribute("$INDEX_ALLOCATION")
 	# An allocation, if present, extends the root index
 	if ia:
 		ia = ia[0]
 		bm = rcrd.find_attribute("$BITMAP")[0]
-		ixa = Index(ia.file, bm, rcrd.boot.index(), 0)
+		ixa = Index(ia.file, bm, rcrd.boot.cbIndx, 0)
 		return IndexGroup(ixr, ixa)
 	return ixr
 
@@ -221,7 +219,7 @@ def ntfs_open_root(rcrd):
 def ntfs_open_record(mftrecord, record):
 	"Opens a MFT Record by name or number, directly searching the MFT"
 	if type(record) == int:
-		mftrecord._stream.seek(record*mftrecord.boot.record())
+		mftrecord._stream.seek(record*mftrecord.boot.cbRecord)
 		return Record(mftrecord.boot, mftrecord._stream)
 	elif type(record) == str:
 		mftrecord._stream.seek(0)

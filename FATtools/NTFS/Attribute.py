@@ -8,7 +8,8 @@ from FATtools.debug import log
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
 __all__ = ['Attribute', 'Standard_Information', 'Attribute_List', 'Attribute_Listed', 'File_Name', 'Data',
-'Index_Root', 'Index_Allocation', 'Bitmap', 'Volume_Name', 'Volume_Information', 'attributes_by_id', 'attributes_by_name']
+'Index_Root', 'Index_Allocation', 'Bitmap', 'Volume_Name', 'Volume_Information', 'Security_Descriptor',
+'attributes_by_id', 'attributes_by_name']
 
 
 attributes_by_id ={
@@ -49,15 +50,16 @@ class Attribute:
 	0x16: ('uchFlags', 'B'),
 	0x17: ('uchPadding', 'B') } # Size = 0x18 (24) bytes (total)
 
-	layout_nonresident = {  # additional layout (non resident content)
-	0x10: ('u64StartVCN', '<Q'),
-	0x18: ('u64EndVCN', '<Q'),
+	layout_nonresident = {  # additional layout (non resident contents)
+	0x10: ('u64StartVCN', '<Q'), # first Virtual Cluster Number of contents
+	0x18: ('u64EndVCN', '<Q'), # last VCN of contents
 	0x20: ('wDatarunOffset', '<H'),
 	0x22: ('wCompressionSize', '<H'), 
 	0x24: ('uchPadding', '4s'),
-	0x28: ('u64AllocSize', '<Q'),
-	0x30: ('u64RealSize', '<Q'),
-	0x38: ('u64StreamSize', '<Q') } # Size = 0x40 (64) bytes (total)
+	0x28: ('u64AllocSize', '<Q'), # bytes occupied by allocated clusters
+	0x30: ('u64RealSize', '<Q'), # bytes occupied by true contents
+	0x38: ('u64StreamSize', '<Q') # always equal to u64RealSize?
+	} # Size = 0x40 (64) bytes (total)
 	
 	def __init__(self, parent, offset):
 		self._parent = parent # parent Record
@@ -91,10 +93,10 @@ class Standard_Information(Attribute):
 	0x24: ('dwMaxVerNum', '<I'),
 	0x28: ('dwVerNum', '<I'),
 	0x2C: ('dwClassId', '<I'),
-	0x30: ('dwOwnerId', '<I'),  # these 4 since NTFS 3.0 (Windows 2000)
+	0x30: ('dwOwnerId', '<I'),  # next 4 since NTFS 3.0 (Windows 2000)
 	0x34: ('dwSecurityId', '<I'),
 	0x38: ('u64QuotaCharged', '<Q'),
-	0x40: ('u64USN', '<Q') } # 0x48 (72) bytes
+	0x40: ('u64USN', '<Q') } # 0x30 (48) - 0x48 (72) bytes
 
 	def __init__(self, parent, offset):
 		Attribute.__init__(self, parent, offset)
@@ -104,6 +106,8 @@ class Standard_Information(Attribute):
 		s = ''
 		L1 = utils.class2str(self, "$STANDARD_INFORMATION @%x\n" % self._i).split('\n')
 		L2 = []
+		if self.dwLength == 0x30: # NTFS <3.0
+			del L1[-5:-1]
 		for key in (0x18, 0x20, 0x28, 0x30):
 			o = self._kv[key][0]
 			v = getattr(self, o)
@@ -151,7 +155,7 @@ class Attribute_Listed:
 		self.Name = ''
 		if self.ucbNameLen:
 			i = self._i+self.ucbNameOffs
-			self.Name = (b'\xFF\xFE' + self._buf[i:i+self.ucbNameLen*2]).decode('utf16')
+			self.Name = (self._buf[i:i+self.ucbNameLen*2]).decode('utf-16le')
 
 	__getattr__ = utils.common_getattr
 
@@ -169,7 +173,7 @@ class File_Name(Attribute):
 	0x28: ('u64AllocatedSize', '<Q'),
 	0x30: ('u64RealSize', '<Q'),
 	0x38: ('dwFlags', '<I'),
-	0x3C: ('dwEA', '<I'),  # These 3 since NTFS 3.0 (Windows 2000)
+	0x3C: ('dwEA', '<I'),
 	0x40: ('ucbFileName', 'B'),
 	0x41: ('uFileNameNamespace', 'B') } # 0x42 (66) bytes
 
@@ -178,7 +182,7 @@ class File_Name(Attribute):
 		common_update_and_swap(self)
 		# Always resident - so name is at (24+66) bytes from start
 		i = self._i+90
-		self.FileName = (b'\xFF\xFE' + self._buf[i:i+self.ucbFileName*2]).decode('utf16')
+		self.FileName = (self._buf[i:i+self.ucbFileName*2]).decode('utf-16le')
 
 	def __str__ (self):
 		s = ''
@@ -260,10 +264,10 @@ class Index_Allocation(Attribute):
 
 	decode = common_dataruns_decode
 
-""" A Bitmap is typically stored:
+""" A Bitmap is typically found:
 - as $MFT Record Attribute (tracking used FILE records)
-- as $INDEX_ALLOCATION contents (tracking FILE records *not* used)
-- as $Bitmap record contents (tracking free volume clusters) """
+- as directory record attribute (tracking INDX blocks used in an $INDEX_ALLOCATION)
+- as $Bitmap file contents (tracking free/used volume clusters)"""
 class Bitmap(Attribute):
 	specific_layout = {}
 
@@ -298,7 +302,7 @@ class Volume_Name(Attribute):
 		Attribute.__init__(self, parent, offset)
 		common_update_and_swap(self)
 		i = self._i + self.wAttrOffset
-		self.VolumeName = (b'\xFF\xFE' + self._buf[i:i+self.dwLength]).decode('utf16')
+		self.VolumeName = (self._buf[i:i+self.dwLength]).decode('utf-16le')
 
 	def __str__ (self):
 		L1 = utils.class2str(self, "$VOLUME_NAME @%x\n" % self._i).split('\n')
@@ -308,7 +312,7 @@ class Volume_Information(Attribute):
 	# Always resident
 	specific_layout = {
 	0x00: ('u64Reserved', '<Q'),
-	0x08: ('bMajorVersion', 'B'), # 3.1=XP+, 3.0=2K, 1.2=NT
+	0x08: ('bMajorVersion', 'B'), #  1.1=NT 3.51, 1.2=NT4, 3.0=2K, 3.1=XP+
 	0x09: ('bMinorVersion', 'B'),
 	0x0A: ('wFlags', '<H'), # 1=dirty, 2=log resize, 4=to upgrade, 8=mounted on NT4, 10h=del USN, 20h=repair OIDS, 8000h=modified by CHKDSK
 	0x0C: ('dwReserved', '<I') } # 0x10 (16) bytes
@@ -318,3 +322,15 @@ class Volume_Information(Attribute):
 		common_update_and_swap(self)
 
 	def __str__ (self): return utils.class2str(self, "$VOLUME_INFORMATION @%x\n" % self._i)
+
+	def is_dirty(self):
+		return self.wFlags & 1
+
+class Security_Descriptor(Attribute):
+	specific_layout = {}
+
+	def __init__(self, parent, offset):
+		Attribute.__init__(self, parent, offset)
+		common_update_and_swap(self)
+
+	def __str__ (self): return utils.class2str(self, "$SECURITY_DESCRIPTOR @%x\n" % self._i)

@@ -68,7 +68,7 @@ def common_dataruns_decode(self):
 		# computates and stores run length and offset according to cluster size
 		if DEBUG&8: log("length=%d offset=%d prevoffset=%d", length, offset, self.dataruns[-1])
 		# CAVE! EFFECTIVE cluster size MUST be used!
-		self.dataruns += (length* self.boot.cluster(), (offset* self.boot.cluster()+self.dataruns[-1]))
+		self.dataruns += (length* self.boot.cbCluster, (offset* self.boot.cbCluster+self.dataruns[-1]))
 		i += n_offset
 	if DEBUG&8: log("decoded dataruns @%d:\n%s", self._i, self.dataruns)
 

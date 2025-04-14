@@ -17,19 +17,20 @@ class Record:
 	0x10: ('wSequence', '<H'),
 	0x12: ('wHardLinks', '<H'),
 	0x14: ('wAttribOffset', '<H'),
-	0x16: ('wFlags', '<H'),
+	0x16: ('wFlags', '<H'), # 1=Record in use
 	0x18: ('dwRecLength', '<I'),
 	0x1C: ('dwAllLength', '<I'),
 	0x20: ('u64BaseMftRec', '<Q'),
 	0x28: ('wNextAttrID', '<H'),
 	0x2A: ('wFixupPattern', '<H'),
-	0x2C: ('dwMFTRecNumber', '<I') } # Size = 0x30 (48 byte)
-	
+	0x2C: ('dwMFTRecNumber', '<I') #  NTFS v3.0+
+	} # Size = 0x2C (44 byte)
+
 	def __init__ (self, boot, mftstream):
 		#~ mftrecord.boot.stream --> NTFS Volume stream
 		#~ mftrecord._stream --> $MFT stream
 		self.boot = boot
-		record_size = boot.record()
+		record_size = boot.cbRecord
 		self._i = 0 # buffer offset
 		self._pos = mftstream.tell() # MFT offset
 		self._buf = mftstream.read(record_size)
@@ -62,6 +63,8 @@ class Record:
 				self._expand_attribute_list(a)
 			elif dwType == 0x30:
 				a = File_Name(self, offset)
+			elif dwType == 0x50:
+				a = Security_Descriptor(self, offset)
 			elif dwType == 0x60:
 				a = Volume_Name(self, offset)
 			elif dwType == 0x70:
@@ -94,11 +97,11 @@ class Record:
 	__getattr__ = utils.common_getattr
 	fixup = common_fixup
 		
-	def __str__ (self): return utils.class2str(self, "MFT Record 0x%X @%x\n" % (self._pos//self.boot.record(), self._pos))
+	def __str__ (self): return utils.class2str(self, "MFT Record 0x%X @%x\n" % (self._pos//self.boot.cbRecord, self._pos))
 
 	def next(self, index=1):
 		"Parses the next or n-th Record"
-		off = index * self.boot.record()
+		off = index * self.boot.cbRecord
 		if index > 1:
 			if off > self._stream.size:
 				raise NTFSException("MFT Record #%d does not exist!" % index)
@@ -131,7 +134,7 @@ class Record:
 		for a in expanded:
 			n = a.u64BaseMFTFileRef & 0x0000FFFFFFFFFFFF
 			# this listed attributed resides in this same Record
-			if n*self.boot.record() == self._pos:
+			if n*self.boot.cbRecord == self._pos:
 				continue
 			if DEBUG&8: log("loading attributes in Record %08X", n)
 			# loads the referenced Record and updates with contained attributes

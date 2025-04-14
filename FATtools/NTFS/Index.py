@@ -189,7 +189,7 @@ class Index_Entry:
 		self.FileName = ''
 		if self.wfilenameOffset:
 			j = index + 82
-			self.FileName = (b'\xFF\xFE' + self._buf[j: j+self.ucbFileName*2]).decode('utf16')
+			self.FileName = (self._buf[j: j+self.ucbFileName*2]).decode('utf-16le')
 		if DEBUG & 8: log('Decoded INDEX_ENTRY @%x\n%s', index, self)
 
 	__getattr__ = utils.common_getattr
