@@ -182,14 +182,14 @@ def ntfs_get_free_clusters(mft):
 	# Precalcola il numero di zero per ogni byte
 	bit_zero_table = [8 - bin(i).count('1') for i in range(256)]
 	bmp = ntfs_open_record(mft, "$Bitmap") # NTFS volume bitmap
-	f = bmp.find_attribute("$DATA")[-1].file
+	f = bmp.find_attribute("$DATA")[0].file # CAVE! 2 $DATA possible sometimes!
 	totc = mft.boot.u64TotalSectors // mft.boot.uchSecPerClust # volume clusters
 	freec = 0
 	excb = 8 - totc%8 # excedent bits
 	while totc > 0:
 		cb = min(totc//8 or 1, 1<<20) # process min 1b, max 1MB bitmap
 		totc -= cb*8
-		buf = f.read(cb) 
+		buf = f.read(cb)
 		zeros = sum(bit_zero_table[b] for b in buf)
 		freec += zeros
 		if totc < 0:

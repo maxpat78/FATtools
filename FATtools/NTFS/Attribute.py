@@ -210,6 +210,7 @@ class Data(Attribute):
 		else:
 			i = self._i + self.wAttrOffset
 			self.file = BytesIO(self._buf[i: i+self.dwLength])
+			self.file.size = self.dwLength
 			if DEBUG&8: log("resident $DATA @%x", i)
 		
 	def __str__ (self): return utils.class2str(self, "$DATA @%x\n" % self._i)
@@ -236,6 +237,7 @@ class Index_Root(Attribute):
 		else:
 			i = self._i + self.wAttrOffset
 			self.file = BytesIO(self._buf[i: i+self.dwLength])
+			self.file.size = self.dwLength
 			if DEBUG&8: log("resident $INDEX_ROOT @%x", i)
 			self.file.seek(0)
 
@@ -257,6 +259,7 @@ class Index_Allocation(Attribute):
 		else:
 			i = self._i + self.wAttrOffset
 			self.file = BytesIO(self._buf[i: i+self.dwLength])
+			self.file.size = self.dwLength
 			if DEBUG&8: log("resident $INDEX_ALLOCATION @%x", i)
 
 	def __str__ (self):
@@ -281,6 +284,7 @@ class Bitmap(Attribute):
 		else:
 			i = self._i + self.wAttrOffset
 			self.file = BytesIO(self._buf[i: i+self.dwLength])
+			self.file.size = self.dwLength
 			if DEBUG&8: log("resident $BITMAP @%x", i)
 
 	def __str__ (self): return utils.class2str(self, "$BITMAP @%x\n" % self._i)
