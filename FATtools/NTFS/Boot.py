@@ -7,19 +7,21 @@ class Bootsector:
 	0x03: ('chOemID', '8s'), # "NTFS    "
 	0x0B: ('wBytesPerSec', '<H'), # typically, 512
 	0x0D: ('uchSecPerClust', 'B'), # typically, 8 (4K cluster)
-	0x0E: ('u64Unused1', '<Q'), # 0xf800000000000000
+	0x0E: ('wReservedSectors', '<H'), # unused
+	0x10: ('sUnused1', '3s'), # unused
+	0x13: ('wUnused1', '<H'), # unused
 	0x15: ('uchMediaDescriptor', 'B'), # typically 0xF8 (HDD)
 	0x16: ('wUnused2', '<H'),
-	0x18: ('wSecPerTrack', '<H'),
-	0x1A: ('wNumberOfHeads', '<H'),
-	0x1C: ('u64Unused3', '<Q'),
-	0x24: ('dwUnknown', '<I'), # typically 0x800080
-	0x25: ('dwUnused4', '<I'),
+	0x18: ('wSecPerTrack', '<H'), # typically, 0x3F
+	0x1A: ('wNumberOfHeads', '<H'), # typically, 0xFF
+	0x1C: ('dwHiddenSectors', '<I'), # typically, 0x3F
+	0x20: ('dwUnused1', '<I'), # typically 0
+	0x24: ('dwUnused2', '<I'),# typically 0x800080
 	0x28: ('u64TotalSectors', '<Q'), # count of volume sectors
 	0x30: ('u64MFTLogicalClustNum', '<Q'), # cluster of the $MFT Record (and Master File Table start)
 	0x38: ('u64MFTMirrLogicalClustNum', '<Q'), # $MFTMirr cluster (backup of first 4 $MFT Record)
 	0x40: ('nClustPerMFTRecord', '<b'), # if n<0 then 2^-n. Typically, 0xF6 (-10) or 1K. 
-	0x44: ('nClustPerIndexRecord', '<b'),
+	0x44: ('nClustPerIndexRecord', '<b'), # if n<0 then 2^-n.
 	0x48: ('u64VolumeSerialNum', '<Q'),
 	0x50: ('dwChecksum', '<I'), # typically zero
 	0x54: ('chBootstrapCode', '426s'),

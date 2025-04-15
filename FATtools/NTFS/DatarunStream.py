@@ -7,12 +7,13 @@ class DatarunStream:
 	"Accesses a sequence of data runs as a continuous stream"
 	def __init__ (self, boot, dataruns, size):
 		self.boot = boot
-		self._runs = dataruns
+		self._runs = dataruns # [(length, base_absolute_offset), (length, base_offset_delta), ...]
 		self.curdatarun = 0 # datarun paired with current stream offset
 		self.curdatarunpos = 0 # offset in current datarun
 		self.size = size # virtual stream length
 		self.seekpos = 0 # virtual stream offset
 		self.IsValid = 1 # to make FATtools code happy
+		self.seek(0)
 
 	def close(self):
 		pass
@@ -66,6 +67,7 @@ class DatarunStream:
 			else:
 				break
 		# Having found the datarun where the final position lays, we seek from its offset
-		if DEBUG&8: log("seek @%x, datarun=%d, relativepos=%x", self.seekpos, i-2, todo)
+		if DEBUG&8: log("seek @%x, datarun=%d, base=0x%x, offset=0x%x", self.seekpos, i-2, self._runs[i+1], todo)
+		#~ print("seek @%x, datarun=%d, relpos=%x, absbase=%x"%(self.seekpos, i-2, todo, self._runs[i+1]))
 		# BUG? Real disk stream has to seek with an Index, not the datarun stream?
 		self.boot.stream.seek(self._runs[i+1] + todo)

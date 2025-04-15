@@ -22,8 +22,7 @@ class Record:
 	0x1C: ('dwAllLength', '<I'),
 	0x20: ('u64BaseMftRec', '<Q'),
 	0x28: ('wNextAttrID', '<H'),
-	0x2A: ('wFixupPattern', '<H'),
-	0x2C: ('dwMFTRecNumber', '<I') #  NTFS v3.0+
+	0x2A: ('wFixupPattern', '<H')
 	} # Size = 0x2C (44 byte)
 
 	def __init__ (self, boot, mftstream):
@@ -42,8 +41,11 @@ class Record:
 		self._vk = {} # { name: offset}
 		for k, v in self._kv.items():
 			self._vk[v[0]] = k
-			
+		
 		if not self.wFlags & 0x1: return # Unused record
+
+		if self.wUSAOffset == 0x30: # NTFS v3.1
+			self.layout[0x2C] = ('dwMFTRecNumber', '<I') # redundant Record number
 		
 		if self.fileSignature != b'FILE':
 			print("Malformed NTFS Record @%x!" % self._pos)
@@ -98,6 +100,14 @@ class Record:
 	fixup = common_fixup
 		
 	def __str__ (self): return utils.class2str(self, "MFT Record 0x%X @%x\n" % (self._pos//self.boot.cbRecord, self._pos))
+
+	def iterator(self):
+		"Iterates through all MFT Records, from start"
+		offset = 0
+		while offset < self._stream.size:
+			self._stream.seek(offset)
+			yield Record(self.boot, self._stream)
+			offset += self.boot.cbRecord
 
 	def next(self, index=1):
 		"Parses the next or n-th Record"

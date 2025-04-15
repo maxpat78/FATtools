@@ -164,6 +164,7 @@ class Attribute_Listed:
 
 
 class File_Name(Attribute):
+	# Always resident
 	specific_layout = {
 	0x00: ('u64FileReference', '<Q'),
 	0x08: ('u64CTime', '<Q'),
@@ -180,7 +181,7 @@ class File_Name(Attribute):
 	def __init__(self, parent, offset):
 		Attribute.__init__(self, parent, offset)
 		common_update_and_swap(self)
-		# Always resident - so name is at (24+66) bytes from start
+		# Name is at (24+66) bytes from start
 		i = self._i+90
 		self.FileName = (self._buf[i:i+self.ucbFileName*2]).decode('utf-16le')
 
@@ -316,7 +317,7 @@ class Volume_Information(Attribute):
 	# Always resident
 	specific_layout = {
 	0x00: ('u64Reserved', '<Q'),
-	0x08: ('bMajorVersion', 'B'), #  1.1=NT 3.51, 1.2=NT4, 3.0=2K, 3.1=XP+
+	0x08: ('bMajorVersion', 'B'), #  1.1/1.2=NT 3.5/4, 3.0=2K, 3.1=XP+
 	0x09: ('bMinorVersion', 'B'),
 	0x0A: ('wFlags', '<H'), # 1=dirty, 2=log resize, 4=to upgrade, 8=mounted on NT4, 10h=del USN, 20h=repair OIDS, 8000h=modified by CHKDSK
 	0x0C: ('dwReserved', '<I') } # 0x10 (16) bytes
@@ -331,6 +332,7 @@ class Volume_Information(Attribute):
 		return self.wFlags & 1
 
 class Security_Descriptor(Attribute):
+	# At least since Windows NT 3.51
 	specific_layout = {}
 
 	def __init__(self, parent, offset):
