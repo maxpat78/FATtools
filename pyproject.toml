@@ -12,6 +12,7 @@ readme = "README.MD"
 requires-python = ">=3.5"
 keywords = ["FAT", "disk","image"]
 license = "GPL-3.0-only"
+license-files = ["gpl.txt"]
 classifiers = [
     'Programming Language :: Python :: 3',
     'Intended Audience :: Developers',
