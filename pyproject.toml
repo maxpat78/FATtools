@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools >= 77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,14 +11,14 @@ description = "Pure python tools for accessing FAT filesystem images and disks"
 readme = "README.MD"
 requires-python = ">=3.5"
 keywords = ["FAT", "disk","image"]
-license = {text = "GPL"}
+license = "GPL-3.0-only"
+license-files = ["gpl.txt"]
 classifiers = [
     'Programming Language :: Python :: 3',
     'Intended Audience :: Developers',
     'Intended Audience :: System Administrators',
     'Environment :: Win32 (MS Windows)',
     'Environment :: MacOS X',
-    'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
     'Operating System :: Microsoft :: Windows',
     'Operating System :: POSIX :: Linux',
     'Operating System :: MacOS :: MacOS X',
