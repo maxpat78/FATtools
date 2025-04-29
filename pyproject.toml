@@ -32,7 +32,7 @@ homepage = "https://github.com/maxpat78/FATtools"
 repository = "https://github.com/maxpat78/FATtools.git"
 
 [tool.setuptools]
-packages = ["FATtools", "FATtools.scripts"]
+packages = ["FATtools", "FATtools.NTFS", "FATtools.scripts"]
 
 [tool.setuptools.dynamic]
 version = {attr = "FATtools.version.__version__"}
