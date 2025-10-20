@@ -54,6 +54,7 @@ Exit:
     jmp Exit
 
 LoadInt13_42H:
+    mov dl, 80h ; explicitly set target drive (Phoenix/IBM BIOS need it)
     mov ah, 42h ; extended read in LBA mode from drive DL (preset by BIOS)
     xchg di, si
     mov si, dap ; disk address packet
@@ -65,6 +66,22 @@ LoadInt13_42H:
     int 13h
     xchg di, si ; partition pointer back to SI
     jnc CheckMagic ; else, try with CHS read
+
+LoadInt13_02H:
+    xor ah, ah ; reset disk
+    int 13h
+    mov ax, 0201h ; read 1 sector from drive DL, C-H-S in CH-DH-CL, to ES:BX
+    ;mov bx, 7C00h ; pre-loaded above
+    mov cx, [si+2] ; C-H-S in partition entry
+    mov dh, [si+1]
+    ; stc
+    int 13h
+    jc PrintMsg
+
+CheckMagic:
+    cmp word [7FEh], 0xAA55 ; magic in last sector word?
+    jnz PrintMsg
+    jmp 0x0000:0x7C00 ; jump to Boot Sector code, with DL=boot drive and DS:SI=partition booted
 
 struc DAP
   .size    : resb 1
@@ -84,19 +101,6 @@ dap:
     at DAP.LBAlo,   dd 0                 ; which sector?
     at DAP.LBAhi,   dd 0
     iend
-
-LoadInt13_02H:
-    mov ax, 0201h ; read 1 sector from drive DL, C-H-S in CH-DH-CL, to ES:BX
-    ;mov bx, 7C00h ; pre-loaded above
-    mov cx, [si+2] ; C-H-S in partition entry
-    mov dh, [si+1]
-    ; stc
-    int 13h
-    jc PrintMsg
-CheckMagic:
-    cmp word [7FEh], 0xAA55 ; magic in last sector word?
-    jnz PrintMsg
-    jmp 0x0000:0x7C00 ; jump to Boot Sector code, with DL=boot drive and DS:SI=partition booted
 
 NoBoot:
 db "Nothing to boot.", 0

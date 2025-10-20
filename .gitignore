@@ -21,8 +21,10 @@ $RECYCLE.BIN/
 # =========================
 # Operating System Files
 # =========================
-BUGS.TXT
 
 # PyPI related
 FATtools.egg-info/
 dist/
+
+BUGS.TXT
+IDEAS.TXT
