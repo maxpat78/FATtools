@@ -107,7 +107,9 @@ class Dirtable:
 		if not rcrd:
 			raise NTFSException('Could not open "%s"!'%npath)
 		if rcrd.find_attribute('$FILE_NAME')[0].dwFlags & 0x10000000 > 0:
-			raise NTFSException('"%s" is not a file!'%npath)
+			o = _Empty()
+			o.IsValid = 0
+			return o
 		return NTFSHandle(rcrd)
 
 	def find(self, name):

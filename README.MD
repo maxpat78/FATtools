@@ -84,12 +84,13 @@ Please note that resulting image size can get reduced if: 1) volume(s) is/are de
 `fattools imgclone /dev/sdb image.vhd` (Linux)   
 `fattools imgclone /dev/disk0 image.vhd` (macOS X, disk has first to be dismounted with `diskutil unmount`)
 
-- to list contents in a disk or disk image, copy items to/from it, display and erase them:
+- to list contents in a disk or disk image, copy items to/from it (even between different disk images), display and erase them:
 ```
 fattools ls \\.\PhysicalDrive2/py*
 fattools ls image1.vhd/py* image2.vdi/py*
 fattools cp C:\Python39\Lib\site-packages image.vhd/Python39/Lib
 fattools cp image.vhd/Python39 C:\ProgramData
+fattools cp real_file.txt image.vhd/virtual_dir image.vhdx
 fattools cat image.vhd/readme.txt
 fattools rm image.vhd/Python39
 ```

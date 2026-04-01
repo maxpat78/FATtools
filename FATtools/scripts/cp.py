@@ -13,7 +13,8 @@ from FATtools.debug import log
 
 
 def cp(srcs_list, dest):
-    "Copies items from srcs_list to a target directory (real or inside an image). Supports copy and rename of a single source file, too."
+    """Copies items from srcs_list to a target directory (real or inside an image).
+    Supports copy and rename of a single source file, too."""
     if is_vdisk(dest):
         dst_image = is_vdisk(dest)
         sub_path = dest[len(dst_image):]
@@ -27,7 +28,16 @@ def cp(srcs_list, dest):
             else:
                 dest = dest.create(sub_path[1:]) # creates the single target file
         #~ print(srcs_list, sub_path, dest, printn, 2)
-        Volume.copy_in(srcs_list, dest, printn, 2)
+        L=[]
+        for vsrc in srcs_list:
+            o = is_vdisk(vsrc)
+            if o and len(vsrc) > len(o)+1:
+                if DEBUG: log("cp: copying from image '%s'", o)
+                src = Volume.vopen(o, 'rb')
+                Volume.copy_between([vsrc[len(o)+1:]], src, '.', dest, printn, 2)
+            else:
+                L += [vsrc]
+        Volume.copy_in(L, dest, printn, 2)
     else:
         if DEBUG: log("cp: target is real filesystem")
         if not os.path.isdir(dest):
@@ -50,8 +60,8 @@ def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=No
     """
     par = parser_create_fn(*parser_create_args,usage=help_s,
     formatter_class=argparse.RawDescriptionHelpFormatter,
-    description="Copies items between real and virtual volumes. Wildcards accepted.\nCopy between virtual disk images is not supported yet.",
-    epilog="Examples:\nfattools cp File1.txt File2.txt Dir1 image.vhd\nfattools cp File*.txt Dir? image.vhd/Subdir\nfattools cp image.vhd\\*.py image.vhd/Subdir1 C:\\MyDir\nfattools cp image.vhdx/Readme.txt Leggimi.txt")
+    description="Copies items between real and virtual volumes. Wildcards accepted.\n",
+    epilog="Examples:\nfattools cp real_file.txt image.vhd/virtual_dir image.vhdx\nfattools cp File1.txt File2.txt Dir1 image.vhd\nfattools cp File*.txt Dir? image.vhd/Subdir\nfattools cp image.vhd\\*.py image.vhd/Subdir1 C:\\MyDir\nfattools cp image.vhdx/Readme.txt Leggimi.txt")
     par.add_argument('items', nargs='+')
     return par
 
