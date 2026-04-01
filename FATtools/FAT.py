@@ -1308,8 +1308,8 @@ class FATDirentry(Direntry):
                 is_8dot3 = True
         return is_8dot3
 
-    special_short_chars = ''' "*/:<>?\|[]+.,;=''' + ''.join([chr(c) for c in range(32)])
-    special_lfn_chars = '''"*/:<>?\|''' + ''.join([chr(c) for c in range(32)])
+    special_short_chars = r''' "*/:<>?\|[]+.,;=''' + ''.join([chr(c) for c in range(32)])
+    special_lfn_chars = r'''"*/:<>?\|''' + ''.join([chr(c) for c in range(32)])
 
     @staticmethod
     def IsValidDosName(name, lfn=False):

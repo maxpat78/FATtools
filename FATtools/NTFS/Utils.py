@@ -1,5 +1,5 @@
 # -*- coding: cp1252 -*-
-import fnmatch, os, sys, struct, time
+import fnmatch, os, sys, struct, time, datetime
 #~ from FATtools.FAT import Direntry
 from .Boot import *
 from .Index import *
@@ -8,6 +8,20 @@ from .Commons import *
 from FATtools.debug import log
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 
+
+def ntfs_to_msdos(ts):
+    ntfs_epoch = datetime.datetime(1601, 1, 1)
+    dt = ntfs_epoch + datetime.timedelta(microseconds=ts / 10)
+    year = dt.year
+    month = dt.month
+    day = dt.day
+    hour = dt.hour
+    minute = dt.minute
+    second = dt.second
+    if year < 1980: return 0, 0
+    dos_date = ((year - 1980) << 9) | (month << 5) | day
+    dos_time = (hour << 11) | (minute << 5) | (second // 2)
+    return dos_date, dos_time
 
 class _Empty: pass
 
@@ -51,8 +65,7 @@ class NTFSDirentry:
 	def __init__ (p, ixe):
 		p.entry = ixe
 		p.dwFileSize = ixe.u64realFileSize
-		p.wMDate = ixe.u64lastModified
-		p.wMTime = ixe.u64lastModified
+		p.wMDate, p.wMTime = ntfs_to_msdos(ixe.u64lastModified)
 	def ShortName(p):
 		return p.entry.FileName
 	def LongName(p):
