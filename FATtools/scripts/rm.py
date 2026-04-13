@@ -25,7 +25,8 @@ def _rm(v, args):
                 continue
         if is_file:
             print("Erasing file %s" % it)
-            r = v.erase(it)
+            #~ r = v.erase(it)
+            r = fp.Dir.erase(os.path.basename(it)) # owning Dirtable erases that *name*
             if DEBUG&2: log("rm: erase('%s') returned %d", it, r)
         else:
             print("Erasing directory %s..." % it)

@@ -1407,6 +1407,7 @@ class Dirtable(object):
         "Opens the chain corresponding to an existing file name"
         self._checkopen()
         res = Handle()
+        root = None
         if type(name) != DirentryType:
             root, fname = os.path.split(name)
             if root:
@@ -1428,7 +1429,7 @@ class Dirtable(object):
             # or Chain won't work!
             res.File = Chain(self.boot, self.fat, e.Start(), e.dwFileSize)
             res.Entry = e
-            res.Dir = self
+            res.Dir = root # true Dirtable owning such name
             self.filetable += [res]
         return res
 
