@@ -127,6 +127,13 @@ def fat_mkfs(stream, size, sector=512, params={}):
         fat_slot_sizes = [12,16,32]
         if params.get('fat12_disabled'): del fat_slot_sizes[0]
 
+    if size <= (32<<20): # Windows 11 always assumes FAT12
+        if fat_bits != 12:
+            if verbose: print("Fatal: FAT12 is mandatory for a %d sectors disk!" % sectors)
+            return -4
+        else:
+            fat_slot_sizes = [12] 
+    
     if sectors < 320 or sectors > 0xFFFFFFFF:
         if verbose: print("Fatal: can't apply FAT file system to a %d sectors disk!" % sectors) # min is 5.25" 160K floppy
         return -3
@@ -215,8 +222,9 @@ def fat_mkfs(stream, size, sector=512, params={}):
         allowed = fat_fs[fat_bits]
         K = list(allowed.keys())
         i = len(K) // 2
-        # ...except with some well known floppy formats
-        if sectors < 5761:
+        # ...except with some well known floppy formats or FAT12 HDDs
+        #if sectors < 5761:
+        if sectors <= 65536:
             if sectors == 320: i=0 # 512b cluster
             elif sectors == 360: i=0
             elif sectors == 640: i=1 # 1K
@@ -225,7 +233,7 @@ def fat_mkfs(stream, size, sector=512, params={}):
             elif sectors == 2880: i=0
             elif sectors == 3360: i=2 # 2K
             elif sectors == 5760: i=0
-            else: i=0 # if unknown, select 512b cluster
+            else: i=0 # if unknown, select the smallest cluster
         fsinfo = allowed[K[i]]
             
         if verbose: print("%.01fK cluster selected." % (int(K[i])/1024.0))
