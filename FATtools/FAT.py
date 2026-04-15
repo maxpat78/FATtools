@@ -1219,24 +1219,26 @@ class FATDirentry(Direntry):
     @staticmethod
     def GenRawShortFromLongName(name, id=1):
         "Generates a DOS 8+3 short name from a long one (Windows 95 style)"
-        # Replaces valid LFN chars prohibited in short name
-        nname = name.replace(' ', '')
-        # CAVE! Multiple dots?
-        for c in '[]+,;=':
-            nname = nname.replace(c, '_')
-        nname, ext = os.path.splitext(nname)
-        #~ print nname, ext
+        is_lfn = 0
+        nname, ext = os.path.splitext(name)
+        # Replace valid LFN chars prohibited in short names
+        for c in '[]+,;= .':
+            if c in nname:
+                is_lfn = 1
+                rep = '_' # ab[1].c -> ab_1_~1.c
+                if c in ' .': rep = '' # "ab c.c" -> abc~1.c / a.b.c -> ab~1.c
+                nname = nname.replace(c, rep)
         # If no replacement and name is short (LIBs -> LIBS)
-        if len(nname) < 9 and nname in name and ext in name:
+        if len(nname) < 9 and nname in name and ext in name and not is_lfn:
             short = ('%-8s%-3s' % (nname, ext[1:4])).upper()
-            if DEBUG&4: log("GenRawShortFromLongName (0) returned %s",short)
+            if DEBUG&4: log(f'GenRawShortFromLongName({name}, {id}) returned {short}')
             return short
         # Windows 9x: ~1 ... ~9999... as needed
         tilde = '~%d' % id
         i = 8 - len(tilde)
         if i > len(nname): i = len(nname)
         short = ('%-8s%-3s' % (nname[:i] + tilde, ext[1:4])).upper()
-        if DEBUG&4: log("GenRawShortFromLongName (1) returned %s",short)
+        if DEBUG&4: log(f'GenRawShortFromLongName({name}, {id}) returned {short}')
         return short
 
     @staticmethod
