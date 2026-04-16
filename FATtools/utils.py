@@ -15,7 +15,7 @@ def is_vdisk(s):
     "Returns the base virtual disk image path if it contains a known extension or an empty string"
     image_path=''
     for ext in ('vhdx', 'vhd', 'vdi', 'vmdk', 'img', 'dsk', 'raw', 'bin'):
-        if '.'+ext in s.lower():
+        if s.lower().endswith('.'+ext):
             i = s.lower().find(ext)
             image_path = s[:i+len(ext)]
             break

@@ -1216,28 +1216,69 @@ class FATDirentry(Direntry):
         if not ext: return name
         return name + '.' + ext
 
+    """
+    def lfn_test():
+        lfn_samples = {
+        'ab[1].c': 'AB_1_~1 C  ',
+        "ab c.c" : 'ABC~1   C  ',
+        'a.b.c'  : 'AB~1    C  ',
+        'a++.b++': 'A__~1   B__',
+        'a.b++'  : 'A~1     B__',
+        'a.b+c'  : 'A~1     B_C',
+        'a...b'  : 'A~1     B  ',
+        'a.'     : 'A          ',
+        '  a'    : 'A~1        ',
+        '++.c'   : '__~1    C  ',
+        '[ ]'    : '__~1       ',
+        'A.exe'  : 'A       EXE',
+        'LIBs'   : 'LIBS       ',
+        'A.bcde' : 'A~1     BCD',
+        'A.bc'   : 'A       BC ',
+        }
+
+        for lfn in lfn_samples:
+            short = GenRawShortFromLongName(lfn)
+            print(short, short == lfn_samples[lfn])
+    """
     @staticmethod
     def GenRawShortFromLongName(name, id=1):
         "Generates a DOS 8+3 short name from a long one (Windows 95 style)"
+        nname = ''
         is_lfn = 0
-        nname, ext = os.path.splitext(name)
-        # Replace valid LFN chars prohibited in short names
-        for c in '[]+,;= .':
-            if c in nname:
-                is_lfn = 1
-                rep = '_' # ab[1].c -> ab_1_~1.c
-                if c in ' .': rep = '' # "ab c.c" -> abc~1.c / a.b.c -> ab~1.c
-                nname = nname.replace(c, rep)
+        dot = 0
+        for c in reversed(name):
+            if c == '.':
+                if not dot:
+                    dot=1
+                    nname+=c
+                else:
+                    is_lfn=1
+                continue
+            # replaces valid LFN chars prohibited in short names
+            if c in ' []+,;=':
+                is_lfn=1
+                if c != ' ':
+                    nname+='_'
+            else:
+                nname+=c
+        nname = ''.join(reversed(nname)).split('.')
+        if len(nname) == 1:
+            nname=nname[0]
+            ext=''
+        else:
+            nname, ext = nname
+        if len(ext) > 3: is_lfn=1
+        #~ print(f'DEBUG: nname={nname} ext={ext}')
         # If no replacement and name is short (LIBs -> LIBS)
-        if len(nname) < 9 and nname in name and ext in name and not is_lfn:
-            short = ('%-8s%-3s' % (nname, ext[1:4])).upper()
+        if len(nname) < 9 and not is_lfn:
+            short = ('%-8s%-3s' % (nname, ext[:3])).upper()
             if DEBUG&4: log(f'GenRawShortFromLongName({name}, {id}) returned {short}')
             return short
         # Windows 9x: ~1 ... ~9999... as needed
         tilde = '~%d' % id
         i = 8 - len(tilde)
         if i > len(nname): i = len(nname)
-        short = ('%-8s%-3s' % (nname[:i] + tilde, ext[1:4])).upper()
+        short = ('%-8s%-3s' % (nname[:i] + tilde, ext[:3])).upper()
         if DEBUG&4: log(f'GenRawShortFromLongName({name}, {id}) returned {short}')
         return short
 
