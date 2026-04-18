@@ -6,7 +6,7 @@ from FATtools.utils import is_vdisk
 def create_parser(parser_create_fn=argparse.ArgumentParser,parser_create_args=None):
     par = parser_create_fn(*parser_create_args,description="Create a blank disk device of a given size")
     par.add_argument('image_file',help="The image file or disk device to write to",metavar="IMAGE_FILE")
-    par.add_argument("-s", "--size", dest="image_size", help="specify virtual disk size. K, M, G or T suffixes accepted", metavar="SIZE")
+    par.add_argument("-s", "--size", dest="image_size", help="specify virtual disk size as C,H,S or integer (K, M, G or T suffixes accepted)", metavar="SIZE")
     par.add_argument("-b", "--base", dest="base_image", help="specify a virtual disk image base to create a differencing image with default parameters", metavar="BASE")
     par.add_argument("-m", "--monolithic", dest="monolithic", help="immediately allocate all image sectors (except for VMDK)", action="store_true", default=False)
     par.add_argument("-f", "--force", dest="force", help="overwrite a pre-existing image", action="store_true", default=False)
@@ -35,11 +35,23 @@ def call(args):
         print("mkvdisk error: you must specify a virtual disk image size!")
         sys.exit(1)
 
-    u = args.image_size[-1].lower()
-    if u in ('k','m','g','t'):
-        fssize = int(args.image_size[:-1]) * (1<<{'k':10,'m':20,'g':30,'t':40}[u])
+    chs = args.image_size.split(',')
+    if len(chs) == 3:
+        try:
+            chs = tuple(map(int, chs))
+        except ValueError:
+            print("mkvdisk error: CHS geometry must be 3 comma-separated integers!")
+            sys.exit(1)
+        fssize = chs[0]*chs[1]*chs[2]*512
     else:
-        fssize = int(args.image_size)
+        u = args.image_size[-1].lower()
+        if u in ('k','m','g','t'):
+            fssize = int(args.image_size[:-1]) * (1<<{'k':10,'m':20,'g':30,'t':40}[u])
+        else:
+            fssize = int(args.image_size)
+    if fssize < (160<<10):
+        print("mkvdisk error: disk size must be at least 160K (floppy)!")
+        sys.exit(1)
 
     if os.path.exists(args.image_file) and not args.force:
         print("mkvdisk error: disk image already exists, use -f to force overwriting")
@@ -51,6 +63,10 @@ def call(args):
         f=open(args.image_file, 'wb');f.seek(fssize-1);f.write(b'\x00');f.close()
         print("OK!")
         return
+
+    if fssize < (5<<20):
+        print("mkvdisk error: hard disk size must be at least 5 MiB!")
+        sys.exit(1)
 
     if s.endswith('.vhd'):
         fmt = vhdutils
@@ -72,10 +88,15 @@ def call(args):
     else:
         fmt.mk_fixed(args.image_file, fssize, overwrite='yes', sector=sector)
 
-    print("Virtual disk image '%s' created."%args.image_file)
+    sizes = {0:'B', 10:'KiB',20:'MiB',30:'GiB',40:'TiB',50:'EiB'}
+    k = 0
+    for k in sorted(sizes):
+        if (fssize // (1<<k)) < 1024: break
+
+    print(f"Virtual disk image '{args.image_file}' ({fssize/(1<<k):.2f} {sizes[k]}) created successfully.")
    
 
 if __name__ == '__main__':
-    par=create_parser()
-    args = par.parse_args()
+    par = create_parser(parser_create_args=()) 
+    args = par.parse_args() 
     call(args)
