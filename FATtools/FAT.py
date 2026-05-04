@@ -13,7 +13,7 @@ DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 if DEBUG&4: import hexdump
 
 FS_ENCODING = sys.getfilesystemencoding()
-VFS_ENCODING = 'cp1252' # set here encoding to use in virtual FAT FS
+VFS_ENCODING = os.getenv('FATTOOLS_VFSENC', 'cp1252') # set here encoding to use in virtual FAT FS
 
 class FATException(Exception): pass
 
