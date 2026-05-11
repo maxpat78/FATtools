@@ -12,12 +12,13 @@ class myfile(io.FileIO):
         return bytearray(super(myfile, self).read(size))
 
 def is_vdisk(s):
-    "Returns the base virtual disk image path if it contains a known extension or an empty string"
+    "Returns the base virtual disk image pathname if it contains a known extension, or an empty string"
     image_path=''
     for ext in ('vhdx', 'vhd', 'vdi', 'vmdk', 'img', 'dsk', 'raw', 'bin'):
-        if s.lower().endswith('.'+ext):
-            i = s.lower().find(ext)
-            image_path = s[:i+len(ext)]
+        i = s.lower().find('.'+ext)
+        j = i+len(ext)+1
+        if i > -1 and (j == len(s) or s[j]=='\\' or s[j]=='/'):
+            image_path = s[:j]
             break
     return image_path
 
