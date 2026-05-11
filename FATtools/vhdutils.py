@@ -416,7 +416,6 @@ class Image(object):
                 #~ raise BaseException("Differencing Image timestamp not matched: parent was modified after link!")
             if self.Parent.footer.sUniqueId != self.header.sParentUniqueId:
                 raise BaseException("Differencing Image parent's UUID not matched!")
-            self.read = self.read1 # assigns special read and write functions
             self.write = self.write1
         if self.footer.dwDiskType == 2: # Fixed VHD
             self.read = self.read0 # assigns special read and write functions
@@ -474,63 +473,54 @@ class Image(object):
         return self.stream.read(size)
 
     def read(self, size=-1):
-        "Reads (Dynamic, non-Differencing image)"
-        if size == -1 or self._pos + size > self.size:
-            size = self.size - self._pos # reads all
-        buf = bytearray()
-        while size:
-            block = self.bat[self._pos//self.block]
-            offset = self._pos%self.block
-            leftbytes = self.block-offset
-            if DEBUG&16: log("reading at block %d, offset 0x%X (vpos=0x%X, epos=0x%X)", self._pos//self.block, offset, self._pos, self.stream.tell())
-            if leftbytes <= size:
-                got=leftbytes
-                size-=leftbytes
-            else:
-                got=size
-                size=0
-            self._pos += got
-            if block == 0xFFFFFFFF:
-                if DEBUG&16: log("block content is virtual (zeroed)")
-                buf+=bytearray(got)
-                continue
-            self.stream.seek(block*512+self.bitmap_size+offset) # ignores bitmap sectors
-            buf += self.stream.read(got)
-        return buf
-
-    def read1(self, size=-1):
-        "Reads (Differencing image)"
+        "Reads (Dynamic or Differencing image)"
+        # Dynamic VHD bitmap semantics:   bit=0 → sector zeroed,  bit=1 → read from file
+        # Differencing VHD bitmap:        bit=0 → absent (read from parent), bit=1 → present
         if size == -1 or self._pos + size > self.size:
             size = self.size - self._pos # reads all
         buf = bytearray()
         bmp = None
+        is_diff = (self.footer.dwDiskType == 4)
         while size:
-            batind = self._pos//self.block
-            sector = (self._pos-batind*self.block)//512
-            offset = self._pos%512
-            leftbytes = 512-offset
+            batind = self._pos // self.block
+            offset = self._pos % self.block         # byte offset within block
+            got = min(self.block - offset, size)
+            size -= got
             block = self.bat[batind]
-            if DEBUG&16: log("%s: reading %d bytes at block %d, offset 0x%X (vpos=0x%X, epos=0x%X)", self.name, size, batind, offset, self._pos, self.stream.tell())
-            if leftbytes <= size:
-                got=leftbytes
-                size-=leftbytes
-            else:
-                got=size
-                size=0
-            self._pos += got
-            # Acquires Block bitmap once
+            if DEBUG&16: log("%s: reading %d bytes at block %d, offset 0x%X (vpos=0x%X)", self.name, got, batind, offset, self._pos)
+            if block == 0xFFFFFFFF:
+                if is_diff:
+                    if DEBUG&16: log("block absent, reading %d bytes from parent", got)
+                    self.Parent.seek(self._pos)
+                    buf += self.Parent.read(got)
+                else:
+                    if DEBUG&16: log("block content is virtual (zeroed)")
+                    buf += bytearray(got)
+                self._pos += got
+                continue
+            # Load block bitmap (cached by physical block address)
             if not bmp or bmp.i != block:
-                if block != 0xFFFFFFFF:
-                    self.stream.seek(block*512)
-                    bmp = BlockBitmap(self.stream.read(self.bitmap_size), block)
-            if block == 0xFFFFFFFF or not bmp.isset(sector):
-                if DEBUG&16: log("reading %d bytes from parent", got)
-                self.Parent.seek(self._pos-got)
-                buf += self.Parent.read(got)
-            else:
-                if DEBUG&16: log("reading %d bytes", got)
-                self.stream.seek(block*512+self.bitmap_size+sector*512+offset)
-                buf += self.stream.read(got)
+                self.stream.seek(block * 512)
+                bmp = BlockBitmap(bytearray(self.stream.read(self.bitmap_size)), block)
+            # Read the whole range from file in one shot; fix sectors with bit=0 afterwards
+            self.stream.seek(block * 512 + self.bitmap_size + offset)
+            result = bytearray(self.stream.read(got))
+            first_sector = offset // 512
+            last_sector  = (offset + got - 1) // 512
+            for sec in range(first_sector, last_sector + 1):
+                if not bmp.isset(sec):
+                    sec_start = sec * 512                               # sector start within block
+                    r_start = max(sec_start, offset) - offset           # position in result[]
+                    r_end   = min(sec_start + 512, offset + got) - offset
+                    if is_diff:
+                        if DEBUG&16: log("sector %d absent, reading from parent", sec)
+                        self.Parent.seek(batind * self.block + max(sec_start, offset))
+                        result[r_start:r_end] = self.Parent.read(r_end - r_start)
+                    else:
+                        if DEBUG&16: log("sector %d zeroed in bitmap", sec)
+                        result[r_start:r_end] = bytes(r_end - r_start)
+            buf += result
+            self._pos += got
         return buf
 
     def write0(self, s):
@@ -544,40 +534,54 @@ class Image(object):
 
     def write(self, s):
         "Writes (Dynamic, non-Differencing image)"
+        # Allocates blocks on demand; bitmap bit=1 marks each sector as written.
+        # Unallocated blocks and sectors with bit=0 read back as zeros.
         if DEBUG&16: log("%s: write 0x%X bytes from 0x%X", self.name, len(s), self._pos)
         size = len(s)
         if not size: return
-        i=0
+        i = 0
+        bmp = None
         while size:
-            block = self.bat[self._pos//self.block]
-            offset = self._pos%self.block
-            leftbytes = self.block-offset
-            if leftbytes <= size:
-                put=leftbytes
-                size-=leftbytes
-            else:
-                put=size
-                size=0
+            batind = self._pos // self.block
+            offset = self._pos % self.block
+            put = min(self.block - offset, size)
+            size -= put
+            block = self.bat[batind]
             if block == 0xFFFFFFFF:
-                # we keep a block virtualized until we write zeros
+                # Keep block virtual as long as we only write zeros
                 if s[i:i+put] == self.zero[:put]:
-                    i+=put
-                    self._pos+=put
-                    if DEBUG&16: log("block #%d @0x%X is zeroed, virtualizing write", self._pos//self.block, (block*self.block)+self.header.u64DataOffset)
+                    if DEBUG&16: log("block #%d is zeroed, virtualizing write", batind)
+                    i += put; self._pos += put
                     continue
-                # allocates a new block at end before writing
-                self.stream.seek(-512, 2) # overwrites old footer
-                block = self.stream.tell()//512
-                self.bat[self._pos//self.block] = block
-                if DEBUG&16: log("allocating new block #%d @0x%X", self._pos//self.block, block*512)
-                self.stream.write(self.bitmap_size*b'\xFF')
-                self.stream.seek(self.block, 1)
+                # Allocate a new block at file end (overwrite the trailing footer)
+                self.stream.seek(-512, 2)
+                block = self.stream.tell() // 512
+                self.bat[batind] = block
+                if DEBUG&16: log("allocating new block #%d @0x%X", batind, block * 512)
+                self.stream.write(bytearray(self.bitmap_size))  # bitmap: all sectors unused
+                self.stream.write(bytearray(self.block))        # data area: pre-zeroed
                 self.stream.write(self.footer.pack())
-            self.stream.seek(block*512+self.bitmap_size+offset) # ignores bitmap sectors
-            if DEBUG&16: log("writing at block %d, offset 0x%X (0x%X), buffer[0x%X:0x%X]", self._pos//self.block, offset, self._pos, i, i+put)
+            # Load/refresh bitmap cache; flush the previous block's bitmap if moving on
+            if not bmp or bmp.i != block:
+                if bmp:
+                    if DEBUG&16: log("flushing bitmap for block @%Xh before moving", bmp.i)
+                    self.stream.seek(bmp.i * 512)
+                    self.stream.write(bmp.bmp)
+                self.stream.seek(block * 512)
+                bmp = BlockBitmap(bytearray(self.stream.read(self.bitmap_size)), block)
+            # Mark the sectors covered by this write as used
+            first_sector = offset // 512
+            last_sector  = (offset + put - 1) // 512
+            bmp.set(first_sector, last_sector - first_sector + 1)
+            # Write data
+            self.stream.seek(block * 512 + self.bitmap_size + offset)
+            if DEBUG&16: log("writing block #%d:0x%X (vpos=0x%X, epos=0x%X), buf[0x%X:0x%X]", batind, offset, self._pos, self.stream.tell(), i, i+put)
             self.stream.write(s[i:i+put])
-            i+=put
-            self._pos+=put
+            i += put; self._pos += put
+        if bmp:  # flush the last block's bitmap
+            if DEBUG&16: log("flushing bitmap for block @%Xh at end", bmp.i)
+            self.stream.seek(bmp.i * 512)
+            self.stream.write(bmp.bmp)
 
     def write1(self, s):
         "Writes (Differencing image)"
