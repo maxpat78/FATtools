@@ -564,18 +564,20 @@ def copy_between(src_list, src_dir, dest_path, dest_dir, callback=None, attribut
                 if callback: callback('"%s" does not exist!'%it)
                 continue
             try:
+                prev_target = target
                 target = target.mkdir(it)
                 if DEBUG&2: log("copy_between: mkdir '%s'", it)
             except:
                 pass
             if DEBUG&2: log("copy_between: target is '%s'", it)
             copy_tree_between(fpi, target, callback, attributes, chunk_size)
+            target = prev_target # restore previous target dir
             continue
         it = os.path.basename(it) # we want only file/dir name in target!
         if DEBUG&2: log("copy_between: target directory is '%s'", target)
         fpo = target.create(it, (fpi.Entry.dwFileSize+dest_dir.boot.cluster-1)//dest_dir.boot.cluster)
         if DEBUG&2: log("copy_between: target file is '%s'", it)
-        if callback: callback(dst)
+        if callback: callback(it)
         while True:
             s = fpi.read(chunk_size)
             if not s: break

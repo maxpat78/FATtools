@@ -27,7 +27,6 @@ def cp(srcs_list, dest):
                 dest = dest.mkdir(sub_path[1:])
             else:
                 dest = dest.create(sub_path[1:]) # creates the single target file
-        #~ print(srcs_list, sub_path, dest, printn, 2)
         L=[]
         for vsrc in srcs_list:
             o = is_vdisk(vsrc)
