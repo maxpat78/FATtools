@@ -10,17 +10,20 @@ a copy of it in the first, a dynamic disk header in second and third sector
 followed by one or more sectors with the BAT (Blocks Allocation Table).
 Disk is virtually subdivided into blocks of equal size (2 MiB default) with a
 corresponding 32-bit BAT index showing the 512-byte sector where the block
-resides in VHD file.
+lays in VHD file.
 Initially, all BAT indexes are present and set to 0xFFFFFFFF; the blocks are
 allocated on write and put at image's end, so they appear in arbitrary order.
 More BAT space can be allocated at creation time for future size expansion.
 Each block starts with one or more sectors containing a bitmap, indicating
 which sectors are in use. A zeroed bit means sector is not in use, and zeroed.
 The default block requires a 1-sector bitmap since it is 4096 sectors long.
+Windows 11 ignores the bitmap (sectors are always read from block) and sets
+all its bits to "1", trying to allow compatibility with other tools.
 
 A DIFFERENCING VHD is a dynamic image containing only new or modified blocks
 of a parent VHD image (fixed, dynamic or differencing itself). The block
-bitmap must be checked to determine which sectors are in use.
+bitmap *must* be checked to to identify sectors in use and those requiring
+retrieval from the parent(s).
 
 Since offsets are represented in sectors, the BAT can address sectors in a
 range up to 2^32-1 or about 2 TiB.
@@ -40,7 +43,7 @@ import io, struct, uuid, zlib, ctypes, time, os, math
 DEBUG=int(os.getenv('FATTOOLS_DEBUG', '0'))
 import FATtools.utils as utils
 from FATtools.debug import log
-from FATtools.utils import myfile, calc_rel_path
+from FATtools.utils import myfile, calc_rel_path, filemove
 
 
 MAX_VHD_SIZE = 2040<<30 # Windows 11 won't mount bigger VHDs
@@ -112,7 +115,7 @@ class DynamicHeader(object):
     layout = { # { offset: (name, unpack string) }
     0x00: ('sCookie', '8s'), # cxsparse
     0x08: ('u64DataOffset', '>Q'), # 0xFFFFFFFFFFFFFFFF
-    0x10: ('u64TableOffset', '>Q'), # absolute offset of Block Table Address
+    0x10: ('u64TableOffset', '>Q'), # absolute offset of Block Allocation Table
     0x18: ('dwVersion', '>I'), # 0x10000
     0x1C: ('dwMaxTableEntries', '>I'), # entries in BAT (=total disk blocks)
     0x20: ('dwBlockSize', '>I'), # block size (default 2 MiB)
@@ -689,6 +692,44 @@ class Image(object):
         self.close()
         os.remove(self.name)
         return (tot_sectors, tot_blocks)
+
+    def expand(self, newsize):
+        """Increments the Dynamic VHD virtual disk size to 'newsize' by
+        moving its data blocks. Returns 1 on success, 0 on failure."""
+        # Only Dynamic VHDs are expandable
+        if self.footer.dwDiskType != 3 or newsize <= self.size: return 0
+        new_MaxTableEntries = (newsize+self.block-1)//self.block # blocks needed
+        old_bmpsize = (4*self.header.dwMaxTableEntries+511)//512*512
+        new_bmpsize = (4*new_MaxTableEntries+511)//512*512
+        delta = new_bmpsize - old_bmpsize
+        deltas = delta//512
+        if delta:
+            if DEBUG&16: log("%s: size expansion requires inserting %d sectors",self.name,newsize,deltas)
+            # move data blocks forward and fills new BAT sector(s)
+            filemove(self.stream,
+             self.header.u64TableOffset + old_bmpsize,
+             delta,
+             fill=0xFF)
+            if DEBUG&16: log("%s: data moved from %d, updating BAT...",self.name,self.header.u64TableOffset+old_bmpsize)
+            # update current BAT offsets
+            for i in range(self.bat.size):
+                if self.bat[i] == 0xFFFFFFFF: continue
+                self.bat[i] += deltas
+        # update Footer & Header
+        self.footer.u64OriginalSize = newsize
+        self.footer.u64CurrentSize = newsize
+        self.footer.dwDiskGeometry = mk_chs(newsize)
+        self.footer.sUniqueId = uuid.uuid4().bytes # broke link with any child Differencing VHD
+        self.header.dwMaxTableEntries = new_MaxTableEntries
+        # store updated Footer & Header
+        self.stream.seek(0, 0)
+        self.stream.write(self.footer.pack())
+        self.stream.write(self.header.pack())
+        # store updated Footer copy
+        self.stream.seek(-512, 2)
+        self.stream.write(self.footer.pack())
+        if DEBUG&16: log("%s: BAT, Footers and Header correctly updated!",self.name)
+        return 1
 
 def mk_chs(size):
     "Given a disk size, computates and returns as a string the pseudo CHS for VHD Footer"

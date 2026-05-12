@@ -15,7 +15,7 @@ Moreover:
 - it can handle RAW disk images and BytesIO "RamDisk" images, also.
 - it supports 4K sectors
 - it can handle large clusters (128K, 256K) with FAT formats[2]
-- it is able to merge Differencing VHDs
+- it is able to merge Differencing VHDs and expand inplace Dynamic ones.
 
 Following features are implemented (mostly in Python, with a few ctypes calls to handle disks natively; compatibility with Linux and macOS is not regularly tested):
 - sector aligned read/writes with both file images and real disks

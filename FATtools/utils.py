@@ -203,3 +203,45 @@ def calc_rel_path(base, child):
         n -= 1
     relpath += '\\'.join(base_parts[i:])
     return relpath
+
+def filemove(fp, offset, delta, chunk_size=2<<20, fill=None):
+    """Inserts 'delta' bytes in the middle of a file stream,
+    moving data from 'offset' onward, optionally filling the
+    new space."""
+    if delta <= 0: return
+
+    fp.seek(0, 2)
+    eof = fp.tell()
+
+    if offset >= eof:
+        fp.seek(offset + delta - 1)
+        fp.write(b'\0')
+        return
+
+    # extends the file
+    fp.seek(eof + delta - 1)
+    fp.write(b'\0')
+
+    end = eof
+
+    # backward memmove
+    while end > offset:
+        cb = min(chunk_size, end - offset)
+        pos = end - cb
+
+        fp.seek(pos)
+        buf = fp.read(cb)
+
+        fp.seek(pos + delta)
+        fp.write(buf)
+
+        end = pos
+
+    # optionally fills in the gap
+    if fill is not None:
+        if isinstance(fill, int):
+            fill = bytes([fill])
+        if len(fill) != 1:
+            raise ValueError("fill must be a single byte!")
+        fp.seek(offset)
+        fp.write(fill * delta)
