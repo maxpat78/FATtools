@@ -395,18 +395,14 @@ class Image(object):
             loc = None
             for i in range(8):
                 loc = self.header.locators[i]
-                if loc.dwPlatformCode == b'W2ku': break # prefer absolute pathname
-            if not loc:
-                for i in range(8):
-                    loc = self.header.locators[i]
-                    if loc.dwPlatformCode == b'W2ru': break
-            if loc:
+                if loc.dwPlatformCode in (b'W2ku', b'W2ru'):
                     self.stream.seek(loc.u64PlatformDataOffset)
                     parent = self.stream.read(loc.dwPlatformDataLength)
                     parent = parent.decode('utf_16_le') # This in Windows format!
                     if DEBUG&16: log("%s: init trying to access parent image '%s'", self.name, parent)
                     if os.path.exists(parent):
                         if DEBUG&16: log("Ok, parent image found.")
+                        break
             if not parent:
                 hparent = self.header.sParentUnicodeName.decode('utf-16be')
                 hparent = hparent[:hparent.find('\0')]

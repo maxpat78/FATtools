@@ -1119,8 +1119,8 @@ class FATDirentry(Direntry):
     def IsLabel(self, mark=0):
         "Gets or sets the slot's Label DOS permission"
         if mark:
-            self._buf[0x0B] = 0x08
-        return self._buf[0x0B] == 0x08
+            self._buf[0x0B] |= 0x08
+        return self._buf[0x0B] & 0x08
 
     def Start(self, cluster=None):
         "Gets or sets cluster WORDs in slot"
