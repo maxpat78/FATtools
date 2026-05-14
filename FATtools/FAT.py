@@ -234,8 +234,9 @@ class FAT(object):
         self.size = clusters # total clusters in the data area (max = 2^x - 11)
         self.bits = bitsize # cluster slot bits (12, 16 or 32)
         self.offset = offset # relative FAT offset (1st copy)
-        # CAVE! This accounts the 0-1 unused cluster index?
-        self.offset2 = offset + (((clusters*bitsize+7)//8)+(self.sector-1))//self.sector*self.sector # relative FAT offset (2nd copy)
+        fat_size_bytes = ((clusters+2) * bitsize + 7) // 8 # account for first 2 dummy slots
+        fat_size_sectors = (fat_size_bytes + self.sector - 1) // self.sector
+        self.offset2 = offset + (fat_size_sectors * self.sector) # relative FAT offset (2nd copy)
         self.exfat = exfat # true if exFAT (aka FAT64)
         self.reserved = 0x0FF7
         self.bad = 0x0FF7
