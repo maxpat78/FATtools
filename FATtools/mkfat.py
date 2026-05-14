@@ -128,7 +128,7 @@ def fat_mkfs(stream, size, sector=512, params={}):
         if params.get('fat12_disabled'): del fat_slot_sizes[0]
 
     if size <= (32<<20): # Windows 11 always assumes FAT12
-        if fat_bits != 12:
+        if fat_bits and fat_bits != 12:
             if verbose: print("Fatal: FAT12 is mandatory for a %d sectors disk!" % sectors)
             return -4
         else:
