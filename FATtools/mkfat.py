@@ -69,10 +69,10 @@ clusters from ...FF7h (clusters 0 and 1 are always reserved), so we can have:
 fat12_disabled
 
 if set, FAT12 is not applied to hard disks (i.e. disks >2880KB).
-fat_bits set to 12 always overrides this setting.
+fat_bits set to 12 always overrides this setting, but FAT16 can't be applied
+with less than 4086 clusters. Also, Windows 11 forbids FAT16 on disks < 32MB.
 In recent Windows editions (10, 11), CHKDSK often does not work when it
-finds unexpected formats. For example, we can successfully apply FAT16 to
-a 1.44M floppy but CHKDSK won't recognize it!
+finds unexpected formats.
 
 fat32_forbids_low_clusters
 
@@ -132,8 +132,8 @@ def fat_mkfs(stream, size, sector=512, params={}):
             if verbose: print("Fatal: FAT12 is mandatory for a %d sectors disk!" % sectors)
             return -4
         else:
-            fat_slot_sizes = [12] 
-    
+            fat_slot_sizes = [12]
+
     if sectors < 320 or sectors > 0xFFFFFFFF:
         if verbose: print("Fatal: can't apply FAT file system to a %d sectors disk!" % sectors) # min is 5.25" 160K floppy
         return -3
@@ -172,6 +172,7 @@ def fat_mkfs(stream, size, sector=512, params={}):
             cluster_size = (2**i)
             clusters = (size - rreserved_size) // cluster_size
             if clusters > (2**fat_slot_size)-reserved_clusters: continue # too many clusters, increase size
+            if fat_slot_size == 16 and clusters < (4096-11): continue # FAT16 is not allowed where FAT12 can apply!
             if fat_slot_size == 32:
                 if clusters > (2**28)-reserved_clusters: continue # FAT32 uses 28 bits only
                 if params.get('fat32_forbids_low_clusters') and clusters < 65526: continue
