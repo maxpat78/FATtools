@@ -69,9 +69,12 @@ def FSguess(boot):
         return 'EXFAT'
     if boot.wMaxRootEntries == 0:
         return 'FAT32'
-    if boot.sFSType.rstrip() in ('FAT12', 'FAT16'):
-        return boot.sFSType.rstrip().decode()
-    if boot.wMaxRootEntries < 512:
+    # FAT12 or FAT16: the count of data clusters decides, as the FAT spec says
+    # (sFSType is informational only, and the root entries prove nothing)
+    root_sectors = (boot.wMaxRootEntries*32 + boot.wBytesPerSector - 1) // boot.wBytesPerSector
+    total_sectors = boot.wTotalSectors or boot.dwTotalSectors
+    data_sectors = total_sectors - (boot.wReservedSectors + boot.uchFATCopies*boot.wSectorsPerFAT + root_sectors)
+    if data_sectors // boot.uchSectorsPerCluster < 4085:
         return 'FAT12'
     return 'FAT16'
 
