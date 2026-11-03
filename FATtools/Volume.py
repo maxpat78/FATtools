@@ -204,7 +204,11 @@ def openvolume(part):
     else:
         return 'EINV'
 
-    fat = FAT.FAT(part, boot.fatoffs, boot.clusters(), bitsize={'FAT12':12,'FAT16':16,'FAT32':32,'EXFAT':32}[fstyp], exfat=(fstyp=='EXFAT'))
+    if fstyp == 'EXFAT':
+        fat = FAT.FAT(part, boot.fatoffs, boot.clusters(), bitsize=32, exfat=True)
+    else: # the 2nd FAT where the boot sector puts it, and only if there is one
+        fat = FAT.FAT(part, boot.fatoffs, boot.clusters(), bitsize={'FAT12':12,'FAT16':16,'FAT32':32}[fstyp],
+                      offset2=boot.fat(1), copies=boot.uchFATCopies)
 
     if DEBUG&2:
         log("Inited BOOT object: %s", boot)

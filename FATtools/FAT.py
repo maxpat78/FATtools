@@ -228,15 +228,18 @@ class boot_fat16(object):
 # NOTE: limit decoded dictionary size! Zero or {}.popitem()?
 class FAT(object):
     "Decodes a FAT (12, 16, 32 o EX) table on disk"
-    def __init__ (self, stream, offset, clusters, bitsize=32, exfat=0, sector=512):
+    def __init__ (self, stream, offset, clusters, bitsize=32, exfat=0, sector=512, offset2=None, copies=2):
         self.sector = sector # physical sector size
         self.stream = stream
         self.size = clusters # total clusters in the data area (max = 2^x - 11)
         self.bits = bitsize # cluster slot bits (12, 16 or 32)
         self.offset = offset # relative FAT offset (1st copy)
-        fat_size_bytes = ((clusters+2) * bitsize + 7) // 8 # account for first 2 dummy slots
-        fat_size_sectors = (fat_size_bytes + self.sector - 1) // self.sector
-        self.offset2 = offset + (fat_size_sectors * self.sector) # relative FAT offset (2nd copy)
+        if offset2 is None: # computed, if the boot sector's FAT size is not given
+            fat_size_bytes = ((clusters+2) * bitsize + 7) // 8 # account for first 2 dummy slots
+            fat_size_sectors = (fat_size_bytes + self.sector - 1) // self.sector
+            offset2 = offset + (fat_size_sectors * self.sector)
+        self.offset2 = offset2 # relative FAT offset (2nd copy, or the end of the 1st)
+        self.copies = copies # FAT copies on the volume: the 2nd is written only if there is one
         self.exfat = exfat # true if exFAT (aka FAT64)
         self.reserved = 0x0FF7
         self.bad = 0x0FF7
@@ -334,7 +337,7 @@ class FAT(object):
         self.stream.seek(pos)
         value = struct.pack(self.fat_slot_fmt, value)
         self.stream.write(value)
-        if self.exfat: return # exFAT has one FAT only (default)
+        if self.exfat or self.copies < 2: return # exFAT has one FAT only (default)
         pos = self.offset2+dsp
         if DEBUG&4: log("setting FAT2[0x%X] @0x%X", index, pos)
         self.stream.seek(pos)
@@ -546,7 +549,7 @@ class FAT(object):
             self.stream.write(run)
             self.free_clusters_flag = 1
             self.free_clusters_map[start] = count
-            if self.exfat: return # exFAT has one FAT only (default)
+            if self.exfat or self.copies < 2: return # exFAT has one FAT only (default)
             # updating FAT2, too!
             self.stream.seek(self.offset2+dsp)
             self.stream.write(run)
@@ -561,7 +564,7 @@ class FAT(object):
         L[-1] = struct.pack(self.fat_slot_fmt, self.last)
         run = bytearray().join(L)
         self.stream.write(run)
-        if self.exfat: return # exFAT has one FAT only (default)
+        if self.exfat or self.copies < 2: return # exFAT has one FAT only (default)
         # updating FAT2, too!
         pos = self.offset2+dsp
         self.stream.seek(pos)
